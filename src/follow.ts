@@ -1,9 +1,28 @@
 import type { Vec3 } from 'vec3'
 
+// Simple camera smoothing state
+let currentCameraPos: Vec3 | null = null
+let targetCameraPos: Vec3 | null = null
+let currentYaw = 0
+let targetYaw = 0
+let currentPitch = 0
+let targetPitch = 0
+let isSmoothingActive = false
+let lastTargetPosition: Vec3 | null = null // Track last target position for inertia
+
+// Drone-like smoothing configuration
+const POSITION_SMOOTHING_SPEED = 0.08 // Faster for better target tracking
+const ROTATION_SMOOTHING_SPEED = 0.015 // Faster rotation for better responsiveness
+const DRONE_HEIGHT_OFFSET = 2.25 // Higher up like a drone
+const DRONE_DISTANCE = 4 // Slightly further back for better view
+const DRONE_PITCH = -0.35 // Look down slightly like a drone camera
+const INERTIA_FACTOR = 0.4 // Reduced lag for better target tracking (0-1, higher = more lag)
+
+
 function handleMovement () {
-  // Throttle the function to 60 updates per second
+  // Throttle the function to prevent excessive updates
   const now = Date.now()
-  if (now - appViewer.lastCamUpdate < 1000 / 60) {
+  if (now - appViewer.lastCamUpdate < 16) { // 60fps cap
     return
   }
 
@@ -25,30 +44,84 @@ function handleMovement () {
 function getThirdPersonCameraPosition () {
   const targetPosition: Vec3 = following.entity.position
 
-  // Calculate camera position 5 blocks behind and 2 block above target
+  // Add inertia - camera lags behind target movement
+  let smoothedTargetPosition = targetPosition
+  if (lastTargetPosition) {
+    // Interpolate between last position and current position for inertia
+    smoothedTargetPosition = {
+      x: lerp(lastTargetPosition.x, targetPosition.x, 1 - INERTIA_FACTOR),
+      y: lerp(lastTargetPosition.y, targetPosition.y, 1 - INERTIA_FACTOR),
+      z: lerp(lastTargetPosition.z, targetPosition.z, 1 - INERTIA_FACTOR)
+    } as Vec3
+  }
+  lastTargetPosition = targetPosition
+
+  // Calculate drone-like camera position - circles around the smoothed target
   const { yaw } = following.entity
-  const distance = 5
-  const heightOffset = 2
+  const distance = DRONE_DISTANCE
+  const heightOffset = DRONE_HEIGHT_OFFSET
 
+  // Create a circular orbit around the smoothed target
+  // Add a slight offset to make it more dynamic and drone-like
+  const orbitOffset = Math.sin(Date.now() * 0.000825) * 0.625 // Subtle circular motion
+  const dx = Math.sin(yaw + orbitOffset) * distance
+  const dz = Math.cos(yaw + orbitOffset) * distance
 
-  // Option 1: Calculate camera position behind the entity based on its yaw
-  const dx = Math.sin(yaw) * distance
-  const dz = Math.cos(yaw) * distance
-
-  // Option 2: Camera position is always behind the entity on z axis
-  // const dx = 0
-  // const dz = -distance
-
-  const cameraPosition = targetPosition.offset(dx, heightOffset, dz)
-  const cameraYaw = yaw // Option 1: Use the entity's yaw
-  // const cameraYaw = Math.PI // Option 2: Always look straight towards positive z axis
-  const cameraPitch = -0.2 // always look slightly down at 20%
+  // Create camera position manually to avoid Vec3 method dependencies
+  const cameraPosition = {
+    x: smoothedTargetPosition.x + dx,
+    y: smoothedTargetPosition.y + heightOffset,
+    z: smoothedTargetPosition.z + dz
+  } as Vec3
+  const cameraYaw = yaw + orbitOffset // Follow the target's rotation with slight offset
+  const cameraPitch = DRONE_PITCH // Fixed drone-like pitch
 
   return {
     position: cameraPosition,
     yaw: cameraYaw,
     pitch: cameraPitch
   }
+}
+
+// Smooth interpolation with easing for drone-like movement
+function smoothLerp(start: number, end: number, factor: number): number {
+  // Use smoothstep function for more natural drone movement
+  const smoothFactor = factor * factor * (3 - 2 * factor) // Smoothstep
+  return start + (end - start) * smoothFactor
+}
+
+// Simple linear interpolation
+function lerp(start: number, end: number, factor: number): number {
+  return start + (end - start) * factor
+}
+
+// Update camera position smoothly
+function updateCameraSmoothing() {
+  if (!isSmoothingActive || !targetCameraPos) return
+
+  // Initialize current position if not set
+  if (!currentCameraPos) {
+    currentCameraPos = { x: targetCameraPos.x, y: targetCameraPos.y, z: targetCameraPos.z } as Vec3
+    currentYaw = targetYaw
+    currentPitch = targetPitch
+    return
+  }
+
+  // Interpolate position with smooth curves
+  currentCameraPos.x = smoothLerp(currentCameraPos.x, targetCameraPos.x, POSITION_SMOOTHING_SPEED)
+  currentCameraPos.y = smoothLerp(currentCameraPos.y, targetCameraPos.y, POSITION_SMOOTHING_SPEED)
+  currentCameraPos.z = smoothLerp(currentCameraPos.z, targetCameraPos.z, POSITION_SMOOTHING_SPEED)
+
+  // Interpolate rotation (handle yaw wrapping) - very smooth for drone
+  let yawDiff = targetYaw - currentYaw
+  if (yawDiff > Math.PI) yawDiff -= 2 * Math.PI
+  if (yawDiff < -Math.PI) yawDiff += 2 * Math.PI
+  currentYaw += yawDiff * ROTATION_SMOOTHING_SPEED
+
+  currentPitch = smoothLerp(currentPitch, targetPitch, ROTATION_SMOOTHING_SPEED)
+
+  // Update camera
+  appViewer.backend?.updateCamera(currentCameraPos, currentYaw, currentPitch)
 }
 
 export function setThirdPersonCamera (directionOnly = false) {
@@ -70,7 +143,17 @@ export function setThirdPersonCamera (directionOnly = false) {
 
   // update the third person camera
   const { position, yaw, pitch } = getThirdPersonCameraPosition()
-  appViewer.backend?.updateCamera(directionOnly ? null : position, yaw, pitch)
+  
+  // Set target for smoothing
+  targetCameraPos = position
+  targetYaw = yaw
+  targetPitch = pitch
+  isSmoothingActive = true
+  
+  // Fallback to direct update if smoothing is not available
+  if (!currentCameraPos) {
+    appViewer.backend?.updateCamera(directionOnly ? null : position, yaw, pitch)
+  }
 }
 
 export function trackFollowerMovement () {
@@ -84,6 +167,15 @@ export function trackFollowerMovement () {
   bot.on('entityGone', () => handleMovement())
   bot.on('entityMoved', () => handleMovement())
   bot.on('entityUpdate', () => handleMovement())
+
+  // Simple continuous camera smoothing update loop
+  const smoothUpdateLoop = () => {
+    updateCameraSmoothing()
+    requestAnimationFrame(smoothUpdateLoop)
+  }
+  
+  // Start the smooth update loop
+  requestAnimationFrame(smoothUpdateLoop)
 
   handleMovement()
 }
@@ -128,6 +220,11 @@ export async function setFollowingPlayer (username?: string) {
     // set the following player
     window.following = target
 
+    // Reset camera smoothing for new target
+    currentCameraPos = null
+    isSmoothingActive = false
+    lastTargetPosition = null // Reset inertia for new target
+
     // disable keyboard control of bot
     controMax.enabled = false
 
@@ -152,6 +249,11 @@ export async function setFollowingPlayer (username?: string) {
 
     // set the following player to the main bot
     window.following = bot
+
+    // Reset camera smoothing for bot following
+    currentCameraPos = null
+    isSmoothingActive = false
+    lastTargetPosition = null // Reset inertia for new target
 
     // enable keyboard control of bot
     controMax.enabled = true

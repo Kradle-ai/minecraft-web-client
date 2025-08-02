@@ -447,13 +447,21 @@ export class WorldRendererThree extends WorldRendererCommon {
     const yOffset = this.displayOptions.playerState.getEyeHeight()
 
     this.camera = cam as THREE.PerspectiveCamera
-    this.updateCamera(pos?.offset(0, yOffset, 0) ?? null, yaw, pitch)
+    
+    // Handle the case where pos might not be a proper Vec3 instance
+    let adjustedPos: Vec3 | null = null
+    if (pos) {
+      // Create a new Vec3 instance to ensure it has the offset method
+      adjustedPos = new Vec3(pos.x, pos.y + yOffset, pos.z)
+    }
+    
+    this.updateCamera(adjustedPos, yaw, pitch)
     this.tryIntersectMedia()
   }
 
   updateCamera (pos: Vec3 | null, yaw: number, pitch: number): void {
-    // Following an entity is smoother
-    const duration = bot === following ? 50 : 100
+    // Simple, smooth camera movement
+    const duration = 100 // ms - smooth but not too slow
 
     // if (this.freeFlyMode) {
     //   pos = this.freeFlyState.position
@@ -461,12 +469,16 @@ export class WorldRendererThree extends WorldRendererCommon {
     //   yaw = this.freeFlyState.yaw
     // }
 
-    // Tween position
+    // Tween position with simple easing
     if (pos) {
-      new tweenJs.Tween(this.camera.position).to({ x: pos.x, y: pos.y, z: pos.z }, duration).start()
+      new tweenJs.Tween(this.camera.position)
+        .to({ x: pos.x, y: pos.y, z: pos.z }, duration)
+        .easing(tweenJs.Easing.Quadratic.Out) // Simple smooth easing
+        .start()
       // this.freeFlyState.position = pos
     }
 
+    // Update camera shake with simple rotation tweening
     this.cameraShake.setBaseRotation(pitch, yaw)
   }
 

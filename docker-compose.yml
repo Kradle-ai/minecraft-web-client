@@ -1,0 +1,6 @@
+version: '3'
+services:
+  local-minecraft-web-viewer:
+    build: .
+    ports:
+      - "3003:8080"
