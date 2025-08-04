@@ -12,23 +12,38 @@ let lastTargetPosition: Vec3 | null = null
 let lastTargetVelocity: Vec3 = { x: 0, y: 0, z: 0 }
 let lastTargetTime: number = Date.now()
 
-// Drone-like smoothing configuration
+// Camera smoothing configuration
 const POSITION_SMOOTHING_SPEED = 0.09
 const ROTATION_SMOOTHING_SPEED = 0.02
-const DRONE_HEIGHT_OFFSET = 2.25
-const DRONE_DISTANCE = 4
-const DRONE_PITCH = -0.35
+const CAMERA_HEIGHT_OFFSET = 2.25
+const CAMERA_DISTANCE = 4
+const CAMERA_PITCH = -0.35
 const INERTIA_BASE = 0.3
 
 function handleMovement() {
   const now = Date.now()
-  if (now - appViewer.lastCamUpdate < 16) return
 
-  if (following && !following?.entity?.position) {
-    console.log('The entity to follow could no longer be found')
-    void setFollowingPlayer()
+  // If the camera was updated in the last 4ms, don't update it again
+  // allows mouse movements to be smoother
+  if (now - appViewer.lastCamUpdate < 4) return // 4ms is ~250fps
+  
+  // When following the bot (spectator mode), don't block mouse movement
+  // This prevents stuttering when flying and moving the mouse simultaneously
+  if (following === bot) {
+    if (following && !following?.entity?.position) {
+      console.log('The entity to follow could no longer be found')
+      void setFollowingPlayer()
+      return
+    }
+    
+    setThirdPersonCamera()
+    void appViewer.worldView?.updatePosition(following.entity.position)
     return
   }
+  
+  // When following other entities, use the throttle to prevent conflicts
+  if (now - appViewer.lastCamUpdate < 16) return // 16ms is ~60fps
+
 
   appViewer.lastCamUpdate = now
   setThirdPersonCamera()
@@ -67,8 +82,8 @@ function getThirdPersonCameraPosition() {
   const { yaw } = following.entity
   const orbitOffset = Math.sin(now * 0.000325) * 0.925
 
-  let dx = Math.sin(yaw + orbitOffset) * DRONE_DISTANCE
-  let dz = Math.cos(yaw + orbitOffset) * DRONE_DISTANCE
+  let dx = Math.sin(yaw + orbitOffset) * CAMERA_DISTANCE
+  let dz = Math.cos(yaw + orbitOffset) * CAMERA_DISTANCE
 
   const isIdle = speed < 0.05
   if (isIdle) {
@@ -79,12 +94,12 @@ function getThirdPersonCameraPosition() {
 
   const cameraPosition: Vec3 = {
     x: smoothedTargetPosition.x + dx,
-    y: smoothedTargetPosition.y + DRONE_HEIGHT_OFFSET + (isIdle ? Math.sin(now * 0.00025) * 0.25 : 0),
+    y: smoothedTargetPosition.y + CAMERA_HEIGHT_OFFSET + (isIdle ? Math.sin(now * 0.00025) * 0.25 : 0),
     z: smoothedTargetPosition.z + dz
   }
 
   const cameraYaw = yaw + orbitOffset
-  const cameraPitch = DRONE_PITCH
+  const cameraPitch = CAMERA_PITCH
 
   return {
     position: cameraPosition,
@@ -194,6 +209,9 @@ export async function setFollowingPlayer(username?: string) {
     }
 
     window.following = target
+    // currentCameraPos = null
+    // lastTargetPosition = null 
+    // isSmoothingActive = false
     controMax.enabled = false
     customEvents.emit('followingPlayer', username)
   } else {
@@ -202,15 +220,16 @@ export async function setFollowingPlayer(username?: string) {
     if (following !== bot && following?.entity?.position) {
       const { position, yaw, pitch } = getThirdPersonCameraPosition()
       bot.whisper('watcher', `unfollow ${position.x} ${position.y} ${position.z}`)
-      await new Promise(resolve => setTimeout(resolve, 1000))
+      await new Promise(resolve => setTimeout(resolve, 500))
       bot.look(yaw, pitch).catch(() => {})
     } else {
       bot.whisper('watcher', 'unfollow')
     }
 
     window.following = bot
+    currentCameraPos = null
+    lastTargetPosition = null
     isSmoothingActive = false
-    // lastTargetPosition = null
     controMax.enabled = true
     customEvents.emit('followingPlayer', undefined)
   }
