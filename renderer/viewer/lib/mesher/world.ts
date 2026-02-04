@@ -53,7 +53,7 @@ export class World {
   getLight (pos: Vec3, isNeighbor = false, skipMoreChecks = false, curBlockName = '') {
     // for easier testing
     if (!(pos instanceof Vec3)) pos = new Vec3(...pos as [number, number, number])
-    const { enableLighting, skyLight } = this.config
+    const { enableLighting, skyLight, minLight = 2 } = this.config
     if (!enableLighting) return 15
     // const key = `${pos.x},${pos.y},${pos.z}`
     // if (lightsCache.has(key)) return lightsCache.get(key)
@@ -64,10 +64,10 @@ export class World {
       Math.max(
         column.getBlockLight(posInChunk(pos)),
         Math.min(skyLight, column.getSkyLight(posInChunk(pos)))
-      ) + 2
+      ) + minLight // Configurable ambient floor (was hardcoded +2)
     )
     // lightsCache.set(key, result)
-    if (result === 2 && [this.getBlock(pos)?.name ?? '', curBlockName].some(x => /_stairs|slab|glass_pane/.exec(x)) && !skipMoreChecks) { // todo this is obviously wrong
+    if (result === minLight && [this.getBlock(pos)?.name ?? '', curBlockName].some(x => /_stairs|slab|glass_pane/.exec(x)) && !skipMoreChecks) {
       const lights = [
         this.getLight(pos.offset(0, 1, 0), undefined, true),
         this.getLight(pos.offset(0, -1, 0), undefined, true),
@@ -75,13 +75,13 @@ export class World {
         this.getLight(pos.offset(0, 0, -1), undefined, true),
         this.getLight(pos.offset(1, 0, 0), undefined, true),
         this.getLight(pos.offset(-1, 0, 0), undefined, true)
-      ].filter(x => x !== 2)
+      ].filter(x => x !== minLight)
       if (lights.length) {
         const min = Math.min(...lights)
         result = min
       }
     }
-    if (isNeighbor && result === 2) result = 15 // TODO
+    if (isNeighbor && result === minLight) result = 15 // TODO
     return result
   }
 

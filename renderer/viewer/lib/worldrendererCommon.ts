@@ -429,6 +429,8 @@ export abstract class WorldRendererCommon<WorkerSend = any, WorkerReceive = any>
       enableLighting: this.worldRendererConfig.enableLighting,
       skyLight: 15,
       smoothLighting: this.worldRendererConfig.smoothLighting,
+      aoIntensity: 1.5, // Enhanced AO shadows
+      minLight: 1, // Darker caves
       outputFormat: this.outputFormat,
       textureSize: this.resourcesManager.currentResources!.blocksAtlasParser.atlas.latest.width,
       debugModelVariant: undefined,

@@ -23,6 +23,7 @@ import { initVR } from './world/vr'
 import { Entities } from './entities'
 import { ThreeJsSound } from './threeJsSound'
 import { CameraShake } from './cameraShake'
+// import { BlockMaterial } from './blockShader' // TODO: Debug custom shader
 
 interface MediaProperties {
   position: { x: number, y: number, z: number }
@@ -40,6 +41,28 @@ interface MediaProperties {
 
 type SectionKey = string
 
+// Light levels for held items (from moreBlockDataGenerated.json)
+const HELD_LIGHT_LEVELS: Record<string, number> = {
+  torch: 14,
+  soul_torch: 10,
+  glowstone: 15,
+  jack_o_lantern: 15,
+  lantern: 15,
+  soul_lantern: 10,
+  sea_lantern: 15,
+  shroomlight: 15,
+  end_rod: 14,
+  beacon: 15,
+  conduit: 15,
+  ochre_froglight: 15,
+  verdant_froglight: 15,
+  pearlescent_froglight: 15,
+  crying_obsidian: 10,
+  magma_block: 3,
+  lava_bucket: 15,
+  redstone_torch: 7,
+}
+
 export class WorldRendererThree extends WorldRendererCommon {
   outputFormat = 'threeJs' as const
   sectionObjects: Record<string, THREE.Object3D> = {}
@@ -52,6 +75,7 @@ export class WorldRendererThree extends WorldRendererCommon {
   scene = new THREE.Scene()
   ambientLight = new THREE.AmbientLight(0xcc_cc_cc)
   directionalLight = new THREE.DirectionalLight(0xff_ff_ff, 0.5)
+  heldLight = new THREE.PointLight(0xff_99_44, 0, 12, 1) // Warm orange light, starts off
   entities = new Entities(this)
   cameraObjectOverride?: THREE.Object3D // for xr
   material = new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, alphaTest: 0.1 })
@@ -96,6 +120,11 @@ export class WorldRendererThree extends WorldRendererCommon {
     this.renderUpdateEmitter.on('chunkFinished', (chunkKey: string) => {
       this.finishChunk(chunkKey)
     })
+
+    // Subscribe to held item changes for dynamic lighting
+    this.displayOptions.playerState.events?.on('heldItemChanged', () => {
+      this.updateHeldLight()
+    })
   }
 
   updateEntity (e, isPosUpdate = false) {
@@ -122,9 +151,30 @@ export class WorldRendererThree extends WorldRendererCommon {
     this.directionalLight.position.set(1, 1, 0.5).normalize()
     this.directionalLight.castShadow = true
     this.scene.add(this.directionalLight)
+    this.scene.add(this.heldLight) // Dynamic light for held items
+    this.updateHeldLight() // Initialize held light (DEBUG: always on)
 
     const size = this.renderer.getSize(new THREE.Vector2())
     this.camera = new THREE.PerspectiveCamera(75, size.x / size.y, 0.1, 1000)
+  }
+
+  updateHeldLight () {
+    // DEBUG: Always act as if holding a torch
+    const lightLevel = 14 // torch light level
+
+    // const mainItem = this.displayOptions.playerState.getHeldItem?.(false)
+    // const offItem = this.displayOptions.playerState.getHeldItem?.(true)
+    // // Check both hands for light-emitting items, use the brighter one
+    // const mainLight = mainItem?.name ? HELD_LIGHT_LEVELS[mainItem.name] ?? 0 : 0
+    // const offLight = offItem?.name ? HELD_LIGHT_LEVELS[offItem.name] ?? 0 : 0
+    // const lightLevel = Math.max(mainLight, offLight)
+
+    if (lightLevel > 0) {
+      this.heldLight.intensity = 0.6
+      this.heldLight.distance = 6
+    } else {
+      this.heldLight.intensity = 0
+    }
   }
 
   watchReactivePlayerState () {
@@ -473,6 +523,11 @@ export class WorldRendererThree extends WorldRendererCommon {
   render (sizeChanged = false) {
     this.lastRendered = performance.now()
     this.cursorBlock.render()
+
+    // Update held light position to follow camera
+    if (this.heldLight.intensity > 0) {
+      this.heldLight.position.copy(this.camera.position)
+    }
 
     const sizeOrFovChanged = sizeChanged || this.displayOptions.inWorldRenderingConfig.fov !== this.camera.fov
     if (sizeOrFovChanged) {

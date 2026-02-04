@@ -387,13 +387,26 @@ function renderElement (world: World, cursor: Vec3, element: BlockElement, doAO:
         // TODO: correctly interpolate ao light based on pos (evaluate once for each corner of the block)
 
         const ao = (side1Block && side2Block) ? 0 : (3 - (side1Block + side2Block + cornerBlock))
-        // todo light should go upper on lower blocks
-        light = (ao + 1) / 4 * (cornerLightResult / 15)
+
+        // Configurable AO intensity: 1.0 = original, higher = darker corner shadows
+        const aoIntensity = world.config.aoIntensity ?? 1.0
+        const shadowDepth = 0.75 * aoIntensity // 0.75 is original shadow depth
+        const aoFactor = Math.max(0.05, 1 - ((3 - ao) / 3) * shadowDepth)
+
+        light = aoFactor * (cornerLightResult / 15)
         aos.push(ao)
       }
 
       if (!needTiles) {
-        attr.colors.push(tint[0] * light, tint[1] * light, tint[2] * light)
+        // Directional face shading: darken faces based on their orientation
+        // This adds depth perception (same technique used for water)
+        let dirShade = 1
+        if (Math.abs(dir[0]) > 0.5) dirShade = 0.8       // East/West faces
+        else if (Math.abs(dir[2]) > 0.5) dirShade = 0.6  // North/South faces (darkest)
+        // Up/Down faces (dir[1]) stay at 1.0
+
+        const shadedLight = light * dirShade
+        attr.colors.push(tint[0] * shadedLight, tint[1] * shadedLight, tint[2] * shadedLight)
       }
     }
 

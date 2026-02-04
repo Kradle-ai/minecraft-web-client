@@ -6,6 +6,8 @@ export const defaultMesherConfig = {
   enableLighting: true,
   skyLight: 15,
   smoothLighting: true,
+  aoIntensity: 1.5, // 1.0 = original, higher = darker shadows in corners (1.2-1.5 recommended)
+  minLight: 1, // Ambient light floor (0-2). Original was 2. Lower = darker caves.
   outputFormat: 'threeJs' as 'threeJs' | 'webgpu',
   textureSize: 1024, // for testing
   debugModelVariant: undefined as undefined | number[],
