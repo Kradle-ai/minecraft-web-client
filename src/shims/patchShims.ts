@@ -1,16 +1,18 @@
 import { EventEmitter } from 'events'
-import { dumpProtocolDebugTrace } from '../protocolDebugTrace'
+import { dumpProtocolDebugTrace, looksLikeProtocolParseError } from '../protocolDebugTrace'
 
 const oldEmit = EventEmitter.prototype.emit
 EventEmitter.prototype.emit = function (...args) {
-  if (args[0] === 'error' && !this._events.error) {
+  if (args[0] === 'error') {
     const err = args[1]
-    console.log('Unhandled error event', args.slice(1))
-    const message = String(err?.message ?? err ?? '')
-    if (message.includes('VarInt') || message.includes('custom_payload') || message.includes('buffer end')) {
-      dumpProtocolDebugTrace('unhandled emitter parse error', err)
+    const hasErrorListener = Boolean(this._events?.error)
+    if (looksLikeProtocolParseError(err)) {
+      dumpProtocolDebugTrace(hasErrorListener ? 'handled emitter parse error' : 'unhandled emitter parse error', err)
     }
-    args[1] = { message: String(args[1]) }
+    if (!hasErrorListener) {
+      console.log('Unhandled error event', args.slice(1))
+      args[1] = { message: String(args[1]) }
+    }
   }
   return oldEmit.apply(this, args)
 }

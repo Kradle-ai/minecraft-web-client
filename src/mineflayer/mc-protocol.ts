@@ -2,7 +2,7 @@ import { Client } from 'minecraft-protocol'
 import { appQueryParams } from '../appParams'
 import { downloadAllMinecraftData, getVersionAutoSelect } from '../connect'
 import { gameAdditionalState } from '../globalState'
-import { dumpProtocolDebugTrace, recordProtocolPacket } from '../protocolDebugTrace'
+import { dumpProtocolDebugTrace, looksLikeProtocolParseError, recordProtocolPacket } from '../protocolDebugTrace'
 import { pingServerVersion, validatePacket } from './minecraft-protocol-extra'
 import { getWebsocketStream } from './websocket-core'
 
@@ -23,8 +23,7 @@ customEvents.on('mineflayerBotCreated', () => {
 
   // Always trace protocol decoder errors to correlate with websocket frame history.
   (bot._client as unknown as Client).on('error', (err: any) => {
-    const message = String(err?.message ?? err ?? '')
-    if (message.includes('VarInt') || message.includes('custom_payload') || message.includes('buffer end')) {
+    if (looksLikeProtocolParseError(err)) {
       dumpProtocolDebugTrace('minecraft-protocol parse error', err)
     } else {
       dumpProtocolDebugTrace('minecraft-protocol client error', err)
