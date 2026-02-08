@@ -44,6 +44,11 @@ export const createOrderedWebSocketDuplex = (
       const source = opts?.source ?? 'unknown'
       if (typeof message.data === 'string') {
         recordWsProtocolFrame(source, 'text', message.data)
+        console.warn('[protocol-debug] text frame on protocol stream', {
+          source,
+          length: message.data.length,
+          preview: message.data.slice(0, 120)
+        })
       } else {
         recordWsProtocolFrame(source, 'binary', chunk)
       }
