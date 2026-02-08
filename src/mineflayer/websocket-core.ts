@@ -18,16 +18,27 @@ export const getWebsocketStream = async (host: string) => {
   const baseProtocol = location.protocol === 'https:' ? 'wss' : host.startsWith('ws://') ? 'ws' : 'wss'
   const hostClean = host.replace('ws://', '').replace('wss://', '')
   const ws = new WebSocket(`${baseProtocol}://${hostClean}`)
+  ws.binaryType = 'arraybuffer'
   const clientDuplex = new CustomDuplex(undefined, data => {
     ws.send(data)
   })
 
-  ws.addEventListener('message', async message => {
-    let { data } = message
-    if (data instanceof Blob) {
-      data = await data.arrayBuffer()
-    }
-    clientDuplex.push(Buffer.from(data))
+  // Preserve exact WS frame ordering before feeding minecraft-protocol.
+  // Async Blob conversion can otherwise reorder chunks under load.
+  let messageQueue = Promise.resolve()
+  ws.addEventListener('message', message => {
+    messageQueue = messageQueue.then(async () => {
+      let { data } = message
+      if (data instanceof Blob) {
+        data = await data.arrayBuffer()
+      }
+      const chunk = typeof data === 'string'
+        ? Buffer.from(data)
+        : Buffer.from(new Uint8Array(data))
+      clientDuplex.push(chunk)
+    }).catch((err) => {
+      console.error('ws message processing error', err)
+    })
   })
 
   ws.addEventListener('close', () => {

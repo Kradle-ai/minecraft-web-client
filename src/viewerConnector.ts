@@ -74,6 +74,7 @@ const openWebsocket = async (url: string) => {
   if (url.startsWith(':')) url = `ws://localhost${url}`
   if (!url.startsWith('ws')) url = `ws://${url}`
   const ws = new WebSocket(url)
+  ws.binaryType = 'arraybuffer'
   await new Promise<void>((resolve, reject) => {
     ws.onopen = () => resolve()
     ws.onerror = (err) => reject(new Error(`[websocket] Failed to connect to ${url}`))
@@ -90,13 +91,23 @@ export const getWsProtocolStream = async (url: string) => {
   })
   // todo use keep alive instead?
   let lastMessageTime = performance.now()
-  ws.addEventListener('message', async (message) => {
-    let { data } = message
-    if (data instanceof Blob) {
-      data = await data.arrayBuffer()
-    }
-    clientDuplex.push(Buffer.from(data))
-    lastMessageTime = performance.now()
+  // Preserve exact WS frame ordering before feeding minecraft-protocol.
+  // Async Blob conversion can otherwise reorder chunks under load.
+  let messageQueue = Promise.resolve()
+  ws.addEventListener('message', (message) => {
+    messageQueue = messageQueue.then(async () => {
+      let { data } = message
+      if (data instanceof Blob) {
+        data = await data.arrayBuffer()
+      }
+      const chunk = typeof data === 'string'
+        ? Buffer.from(data)
+        : Buffer.from(new Uint8Array(data))
+      clientDuplex.push(chunk)
+      lastMessageTime = performance.now()
+    }).catch((err) => {
+      console.error('[ws] Failed to process incoming frame', err)
+    })
   })
   setInterval(() => {
     // if (clientDuplex.destroyed) return

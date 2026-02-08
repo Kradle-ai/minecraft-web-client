@@ -14,7 +14,7 @@ interface QueuedTrack {
 
 class AudioTrackScheduler {
   private tracks: AudioTrack[] = []
-  private playedTrackIds = new Set<string>()
+  private readonly playedTrackIds = new Set<string>()
   private isPlaying = false
   private currentTimeMs = 0
   private isLoading = false

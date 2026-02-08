@@ -794,7 +794,7 @@ export class Entities {
     // set visibility
     const isInvisible = entity.metadata?.[0] & 0x20
     for (const child of mesh.children ?? []) {
-      if (child.name !== 'nametag') {
+      if (child.name !== 'nametag' && !(child instanceof THREE.SkeletonHelper)) {
         child.visible = !isInvisible
       }
     }
@@ -976,8 +976,9 @@ export class Entities {
     const e = this.entities[entity.id]
     if (!e) return
     const ANIMATION_DURATION = justAdded ? 0 : TWEEN_DURATION
-    if (entity.position) {
-      new TWEEN.Tween(e.position).to({ x: entity.position.x, y: entity.position.y, z: entity.position.z }, ANIMATION_DURATION).start()
+    const entityPos = (entity as any).position ?? (entity as any).pos
+    if (entityPos) {
+      new TWEEN.Tween(e.position).to({ x: entityPos.x, y: entityPos.y, z: entityPos.z }, ANIMATION_DURATION).start()
     }
     if (entity.yaw) {
       const da = (entity.yaw - e.rotation.y) % (Math.PI * 2)
