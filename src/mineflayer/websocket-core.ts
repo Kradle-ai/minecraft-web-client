@@ -7,6 +7,7 @@ export const getWebsocketStream = async (host: string) => {
   const ws = new WebSocket(`${baseProtocol}://${hostClean}`)
   ws.binaryType = 'arraybuffer'
   const clientDuplex = createOrderedWebSocketDuplex(ws, {
+    source: 'mineflayer:websocket-core',
     onMessageError (err) {
       console.error('ws message processing error', err)
     }

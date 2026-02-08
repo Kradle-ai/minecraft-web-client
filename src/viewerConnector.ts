@@ -75,6 +75,7 @@ export const getWsProtocolStream = async (url: string) => {
   // todo use keep alive instead?
   let lastMessageTime = performance.now()
   const clientDuplex = createOrderedWebSocketDuplex(ws, {
+    source: 'viewerConnector:getWsProtocolStream',
     onMessagePushed () {
       lastMessageTime = performance.now()
     },
