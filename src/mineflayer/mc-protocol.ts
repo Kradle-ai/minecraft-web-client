@@ -2,6 +2,7 @@ import { Client } from 'minecraft-protocol'
 import { appQueryParams } from '../appParams'
 import { downloadAllMinecraftData, getVersionAutoSelect } from '../connect'
 import { gameAdditionalState } from '../globalState'
+import { dumpProtocolDebugTrace, recordProtocolPacket } from '../protocolDebugTrace'
 import { pingServerVersion, validatePacket } from './minecraft-protocol-extra'
 import { getWebsocketStream } from './websocket-core'
 
@@ -10,13 +11,25 @@ customEvents.on('mineflayerBotCreated', () => {
   // todo move more code here
   if (!appQueryParams.noPacketsValidation) {
     (bot._client as unknown as Client).on('packet', (data, packetMeta, buffer, fullBuffer) => {
+      recordProtocolPacket('in', packetMeta.name, fullBuffer?.length)
       validatePacket(packetMeta.name, data, fullBuffer, true)
       lastPacketTime = performance.now()
     });
     (bot._client as unknown as Client).on('writePacket', (name, params) => {
+      recordProtocolPacket('out', name)
       validatePacket(name, params, Buffer.alloc(0), false)
     })
   }
+
+  // Always trace protocol decoder errors to correlate with websocket frame history.
+  (bot._client as unknown as Client).on('error', (err: any) => {
+    const message = String(err?.message ?? err ?? '')
+    if (message.includes('VarInt') || message.includes('custom_payload') || message.includes('buffer end')) {
+      dumpProtocolDebugTrace('minecraft-protocol parse error', err)
+    } else {
+      dumpProtocolDebugTrace('minecraft-protocol client error', err)
+    }
+  })
 })
 
 setInterval(() => {
