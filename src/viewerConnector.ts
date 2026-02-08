@@ -1,5 +1,4 @@
 import { EventEmitter } from 'events'
-import { Duplex } from 'stream'
 import states from 'minecraft-protocol/src/states'
 import { createClient } from 'minecraft-protocol'
 import { proxy, subscribe } from 'valtio'
@@ -8,6 +7,7 @@ import { CustomChannelPacketFromClient, CustomChannelPacketFromServer, UIDefinit
 import { activeModalStack } from './globalState'
 import { mineflayerPluginHudState } from './react/MineflayerPluginHud'
 import { mineflayerConsoleState } from './react/MineflayerPluginConsole'
+import { createOrderedWebSocketDuplex } from './websocketDuplex'
 
 export const viewerVersionState = proxy({
   forwardChat: true,
@@ -18,19 +18,6 @@ export const viewerVersionState = proxy({
   requiresPass: false,
   clientIgnoredPackets: [] as string[]
 })
-
-class CustomDuplex extends Duplex {
-  constructor (options, public writeAction) {
-    super(options)
-  }
-
-  override _read () {}
-
-  override _write (chunk, encoding, callback) {
-    this.writeAction(chunk)
-    callback()
-  }
-}
 
 export const getViewerVersionData = async (url: string) => {
   const ws = await openWebsocket(url)
@@ -85,29 +72,15 @@ const openWebsocket = async (url: string) => {
 
 export const getWsProtocolStream = async (url: string) => {
   const ws = await openWebsocket(url)
-  const clientDuplex = new CustomDuplex(undefined, data => {
-    // console.log('send', Buffer.from(data).toString('hex'))
-    ws.send(data)
-  })
   // todo use keep alive instead?
   let lastMessageTime = performance.now()
-  // Preserve exact WS frame ordering before feeding minecraft-protocol.
-  // Async Blob conversion can otherwise reorder chunks under load.
-  let messageQueue = Promise.resolve()
-  ws.addEventListener('message', (message) => {
-    messageQueue = messageQueue.then(async () => {
-      let { data } = message
-      if (data instanceof Blob) {
-        data = await data.arrayBuffer()
-      }
-      const chunk = typeof data === 'string'
-        ? Buffer.from(data)
-        : Buffer.from(new Uint8Array(data))
-      clientDuplex.push(chunk)
+  const clientDuplex = createOrderedWebSocketDuplex(ws, {
+    onMessagePushed () {
       lastMessageTime = performance.now()
-    }).catch((err) => {
+    },
+    onMessageError (err) {
       console.error('[ws] Failed to process incoming frame', err)
-    })
+    }
   })
   setInterval(() => {
     // if (clientDuplex.destroyed) return
