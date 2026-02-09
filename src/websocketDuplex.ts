@@ -1,5 +1,4 @@
 import { Duplex } from 'stream'
-import { recordWsProtocolFrame } from './protocolDebugTrace'
 
 type InboundData = string | ArrayBuffer | Blob
 
@@ -41,17 +40,6 @@ export const createOrderedWebSocketDuplex = (
   ws.addEventListener('message', (message: MessageEvent<InboundData>) => {
     messageQueue = messageQueue.then(async () => {
       const chunk = await toBuffer(message.data)
-      const source = opts?.source ?? 'unknown'
-      if (typeof message.data === 'string') {
-        recordWsProtocolFrame(source, 'text', message.data)
-        console.warn('[protocol-debug] text frame on protocol stream', {
-          source,
-          length: message.data.length,
-          preview: message.data.slice(0, 120)
-        })
-      } else {
-        recordWsProtocolFrame(source, 'binary', chunk)
-      }
       duplex.push(chunk)
       opts?.onMessagePushed?.()
     }).catch((err) => {

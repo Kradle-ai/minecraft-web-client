@@ -614,17 +614,6 @@ export class Entities {
   update (entity: import('prismarine-entity').Entity & { delete?; pos, name }, overrides) {
     const justAdded = !this.entities[entity.id]
 
-    // Debug logging for mid-game join issues
-    if (justAdded) {
-      console.log('[Entity Debug] Creating entity:', JSON.stringify({
-        id: entity.id,
-        name: entity.name,
-        type: entity.type,
-        pos: { x: entity.pos.x, y: entity.pos.y, z: entity.pos.z },
-        hasUsername: !!entity.username
-      }))
-    }
-
     const isPlayerModel = entity.name === 'player'
     if (entity.name === 'zombie_villager' || entity.name === 'husk') {
       overrides.texture = `textures/1.16.4/entity/${entity.name === 'zombie_villager' ? 'zombie_villager/zombie_villager.png' : `zombie/${entity.name}.png`}`
@@ -718,14 +707,7 @@ export class Entities {
       } else {
         mesh = getEntityMesh(entity, this.worldRenderer, this.entitiesOptions, overrides)
       }
-      if (!mesh) {
-        console.warn('[Entity Debug] Failed to create mesh for entity:', {
-          id: entity.id,
-          name: entity.name,
-          type: entity.type
-        })
-        return
-      }
+      if (!mesh) return
       mesh.name = 'mesh'
       // set initial position so there are no weird jumps update after
       group.position.set(entity.pos.x, entity.pos.y, entity.pos.z)
@@ -759,15 +741,6 @@ export class Entities {
 
       // Explicitly set visibility on creation to ensure entities appear when joining mid-game
       group.visible = true
-
-      console.log('[Entity Debug] Entity created successfully:', JSON.stringify({
-        id: entity.id,
-        name: entity.name,
-        position: { x: entity.pos.x, y: entity.pos.y, z: entity.pos.z },
-        inScene: this.worldRenderer.scene.children.includes(group),
-        visible: group.visible,
-        meshChildrenCount: mesh.children?.length ?? 0
-      }))
     } else {
       mesh = e.children.find(c => c.name === 'mesh')
     }
@@ -796,17 +769,6 @@ export class Entities {
     for (const child of mesh.children ?? []) {
       if (child.name !== 'nametag' && !(child instanceof THREE.SkeletonHelper)) {
         child.visible = !isInvisible
-      }
-    }
-
-    // Debug: Log mesh children visibility
-    if (justAdded) {
-      const childrenInfo = mesh?.children?.map(c => `${c.name}:${c.visible}`).join(', ') ?? 'none'
-      const metadata0 = entity.metadata?.[0] === undefined ? 'undefined' : JSON.stringify(entity.metadata[0])
-      console.log(`[Entity Debug] ID ${entity.id} (${entity.name}) mesh children: [${childrenInfo}], isInvisible=${!!isInvisible}, metadata0=${metadata0}`)
-      // Also log if entity group scale is 0 (hidden via scale hack)
-      if (e.scale.x === 0 || e.scale.y === 0 || e.scale.z === 0) {
-        console.warn(`[Entity Debug] ID ${entity.id} has ZERO SCALE! scale=(${e.scale.x}, ${e.scale.y}, ${e.scale.z})`)
       }
     }
     // ---
