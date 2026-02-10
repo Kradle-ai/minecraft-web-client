@@ -121,7 +121,7 @@ function getTrackedPlayerEntities (): Array<{ position: Vec3, username: string }
   }
   for (const entity of Object.values(bot.entities)) {
     if (isTrackedPlayer(entity)) {
-      result.push({ position: entity.position!, username: entity.username! })
+      result.push({ position: entity.position, username: entity.username! })
     }
   }
   return result
