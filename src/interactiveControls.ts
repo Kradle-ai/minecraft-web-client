@@ -1,7 +1,8 @@
 import { Vec3 } from 'vec3'
 import { proxy } from 'valtio'
 import { pointerLock } from './utils'
-import { toggleFly } from './controls'
+import { toggleFly, getRecordingStatus, getMicStatus, getCameraStatus } from './controls'
+import { packetsReplayState } from './react/state/packetsReplayState'
 
 // ===== Types =====
 
@@ -77,7 +78,14 @@ export function reportCameraState () {
   sendMessageToParent({
     action: 'cameraState',
     mode: cameraState.mode,
-    target: cameraState.target
+    target: cameraState.target,
+    isPaused: !packetsReplayState.isPlaying,
+    currentTimeMs: packetsReplayState.currentTimeMs,
+    totalDurationMs: packetsReplayState.totalDurationMs,
+    speed: packetsReplayState.speed,
+    isRecording: getRecordingStatus(),
+    isMicEnabled: getMicStatus(),
+    isCameraEnabled: getCameraStatus(),
   })
 }
 

@@ -123,7 +123,7 @@ export default function AudioControls () {
     justifyContent: 'center',
   }
 
-  if (appQueryParams.isPlayback === 'true') {
+  if (appQueryParams.replayUrl) {
     return null
   }
 

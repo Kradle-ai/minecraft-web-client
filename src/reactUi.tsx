@@ -54,7 +54,7 @@ import { UIProvider } from './react/UIProvider'
 import { useAppScale } from './scaleInterface'
 import PacketsReplayProvider from './react/PacketsReplayProvider'
 import ReplayTimeline from './react/components/replay/ReplayTimeline'
-import PointerLockHint from './react/PointerLockHint'
+import InteractiveControlsHint from './react/InteractiveControlsHint'
 import TouchInteractionHint from './react/TouchInteractionHint'
 import { ua } from './react/utils'
 import AudioControls from './react/AudioControls'
@@ -145,7 +145,7 @@ const InGameUi = () => {
 
   return <>
     <RobustPortal to={document.querySelector('#ui-root')}>
-      <CameraStateOverlay />
+      {/* <CameraStateOverlay /> */}
       {/* apply scaling */}
       <div style={{ display: showUI ? 'block' : 'none' }}>
         <PerComponentErrorBoundary>
@@ -244,7 +244,7 @@ const App = () => {
             <div />
             <DebugEdges />
             <ReplayTimeline />
-            <PointerLockHint />
+            <InteractiveControlsHint />
           </RobustPortal>
         </ButtonAppProvider>
       </div>

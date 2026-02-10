@@ -8,7 +8,7 @@ import { CommandEventArgument, SchemaCommandInput } from 'contro-max/build/types
 import { stringStartsWith } from 'contro-max/build/stringUtils'
 import { GameMode } from 'mineflayer'
 import { isGameActive, showModal, gameAdditionalState, activeModalStack, hideCurrentModal, miscUiState, hideModal, hideAllModals } from './globalState'
-import { getSpectatorCameraPosition, getSpectatorCameraDirection, setSpectatorCameraPosition } from './interactiveControls'
+import { getSpectatorCameraPosition, getSpectatorCameraDirection, setSpectatorCameraPosition, reportCameraState } from './interactiveControls'
 import { appViewer } from './appViewer'
 import { goFullscreen, isInRealGameSession, pointerLock, reloadChunks } from './utils'
 import { options } from './optionsStorage'
@@ -1281,8 +1281,15 @@ export const toggleCamera = async () => {
   }
 }
 
+let countdownAbortController: AbortController | null = null
+
 export const toggleRecording = async () => {
   console.log('[recording] toggleRecording called, isRecording:', recordingState.isRecording)
+  if (countdownAbortController) {
+    // Countdown in progress — cancel it
+    countdownAbortController.abort()
+    return
+  }
   if (recordingState.isRecording) {
     stopCanvasRecording()
   } else {
@@ -1302,33 +1309,34 @@ const sendUnauthorizedMessage = (feature: 'recording' | 'camera' | 'voice') => {
   }
 }
 
-// C key to toggle camera
-if (appQueryParams.isPlayback === 'true') {
+// M key to cycle camera+mic: Both On → Camera Off + Mic On → Both Off
+if (appQueryParams.replayUrl) {
   window.addEventListener('keydown', (e) => {
-    if (e.code === 'KeyC' && !e.repeat && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
-      // Don't toggle if user is typing in an input
+    if (e.code === 'KeyM' && !e.repeat && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+      e.preventDefault()
       if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') return
-      // Check authorization
       if (appQueryParams.allowRecording !== 'true') {
         sendUnauthorizedMessage('camera')
         return
       }
-      void toggleCamera()
-    }
-  })
-
-  // V key to toggle voice/mic
-  window.addEventListener('keydown', (e) => {
-    if (e.code === 'KeyV' && !e.repeat && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
-      e.preventDefault()
-      // Don't toggle if user is typing in an input
-      if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') return
-      // Check authorization
-      if (appQueryParams.allowRecording !== 'true') {
-        sendUnauthorizedMessage('voice')
-        return
+      const cam = getCameraStatus()
+      const mic = getMicStatus()
+      if (!cam && !mic) {
+        // Both Off → Both On
+        void (async () => {
+          await toggleCamera()
+          await toggleMic()
+        })()
+      } else if (cam && mic) {
+        // Both On → Camera Off, Mic On
+        void toggleCamera()
+      } else {
+        // Any other state → Both Off
+        void (async () => {
+          if (cam) await toggleCamera()
+          if (mic) await toggleMic()
+        })()
       }
-      void toggleMic()
     }
   })
 
@@ -1387,8 +1395,44 @@ const drawRoundedRect = (
   ctx.closePath()
 }
 
-const showRecordingCountdown = async (): Promise<void> => {
+const showRecordingCountdown = async (): Promise<boolean> => {
+  const abortController = new AbortController()
+  countdownAbortController = abortController
+
   return new Promise((resolve) => {
+    const pendingTimeouts: number[] = []
+
+    let resolved = false
+    const cleanup = (completed: boolean) => {
+      if (resolved) return
+      resolved = true
+      for (const t of pendingTimeouts) clearTimeout(t)
+      overlay.remove()
+      countdownAbortController = null
+      window.removeEventListener('keydown', handleCancelKey, true)
+      document.removeEventListener('pointerlockchange', handlePointerLockExit)
+      resolve(completed)
+    }
+
+    const handleCancelKey = (e: KeyboardEvent) => {
+      if (e.code === 'Escape' || e.code === 'KeyR') {
+        cleanup(false)
+      }
+    }
+
+    // ESC exits pointer lock — detect that as a cancel too
+    const handlePointerLockExit = () => {
+      if (!document.pointerLockElement) {
+        cleanup(false)
+      }
+    }
+
+    window.addEventListener('keydown', handleCancelKey, true)
+    document.addEventListener('pointerlockchange', handlePointerLockExit)
+    abortController.signal.addEventListener('abort', () => {
+      cleanup(false)
+    })
+
     // Create overlay container
     const overlay = document.createElement('div')
     overlay.id = 'recording-countdown-overlay'
@@ -1455,6 +1499,8 @@ const showRecordingCountdown = async (): Promise<void> => {
     let index = 0
 
     const showNext = () => {
+      if (abortController.signal.aborted) return
+
       if (index >= counts.length) {
         // Show "Recording" with animated red dot
         labelEl.style.opacity = '0'
@@ -1489,11 +1535,10 @@ const showRecordingCountdown = async (): Promise<void> => {
         `
         document.head.appendChild(style)
 
-        setTimeout(() => {
+        pendingTimeouts.push(window.setTimeout(() => {
           style.remove()
-          overlay.remove()
-          resolve()
-        }, 600)
+          cleanup(true)
+        }, 600))
         return
       }
 
@@ -1503,18 +1548,20 @@ const showRecordingCountdown = async (): Promise<void> => {
 
       // Trigger animation
       requestAnimationFrame(() => {
+        if (abortController.signal.aborted) return
         countdownEl.style.opacity = '1'
         countdownEl.style.transform = 'scale(1)'
       })
 
       // Fade out before next number
-      setTimeout(() => {
+      pendingTimeouts.push(window.setTimeout(() => {
+        if (abortController.signal.aborted) return
         countdownEl.style.opacity = '0'
         countdownEl.style.transform = 'scale(1.3)'
-      }, 650)
+      }, 650))
 
       index++
-      setTimeout(showNext, 1000)
+      pendingTimeouts.push(window.setTimeout(showNext, 1000))
     }
 
     showNext()
@@ -1537,8 +1584,12 @@ const startCanvasRecording = async () => {
   }
   console.log('[recording] Found viewer-canvas:', gameCanvas.width, 'x', gameCanvas.height)
 
-  // Show countdown before starting
-  await showRecordingCountdown()
+  // Show countdown before starting (cancellable with ESC or R)
+  const completed = await showRecordingCountdown()
+  if (!completed) {
+    console.log('[recording] Countdown cancelled')
+    return
+  }
 
   try {
     // Create recording canvas at 1920x1080
@@ -1616,6 +1667,7 @@ const startCanvasRecording = async () => {
     customEvents.emit('recordingUpdate', {
       isRecording: true,
     })
+    reportCameraState()
     drawFrame()
 
     // Capture the recording canvas stream at 60fps
@@ -1739,6 +1791,7 @@ const startCanvasRecording = async () => {
     customEvents.emit('recordingUpdate', {
       isRecording: false,
     })
+    reportCameraState()
   }
 }
 
@@ -1751,6 +1804,7 @@ const stopCanvasRecording = () => {
     customEvents.emit('recordingUpdate', {
       isRecording: false,
     })
+    reportCameraState()
 
     // Stop animation frame
     if (recordingState.animationFrameId) {

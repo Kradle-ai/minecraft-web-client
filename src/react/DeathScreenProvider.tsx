@@ -15,7 +15,7 @@ export default () => {
   const isModalActive = useIsModalActive('death-screen')
 
   // Don't show death screen in replay/playback mode
-  const isPlayback = appQueryParams.isPlayback === 'true'
+  const isPlayback = !!appQueryParams.replayUrl
 
   useEffect(() => {
     // Skip death screen handling in playback mode
