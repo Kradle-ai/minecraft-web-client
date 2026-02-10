@@ -23,6 +23,7 @@ import MinimapProvider, { DrawerAdapterImpl } from './react/MinimapProvider'
 import HudBarsProvider from './react/HudBarsProvider'
 import XPBarProvider from './react/XPBarProvider'
 import DebugOverlay from './react/DebugOverlay'
+import CameraStateOverlay from './react/CameraStateOverlay'
 import MobileTopButtons from './react/MobileTopButtons'
 import PauseScreen from './react/PauseScreen'
 import SoundMuffler from './react/SoundMuffler'
@@ -144,6 +145,7 @@ const InGameUi = () => {
 
   return <>
     <RobustPortal to={document.querySelector('#ui-root')}>
+      <CameraStateOverlay />
       {/* apply scaling */}
       <div style={{ display: showUI ? 'block' : 'none' }}>
         <PerComponentErrorBoundary>

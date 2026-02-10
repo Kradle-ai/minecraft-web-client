@@ -628,7 +628,9 @@ const mainPacketsReplayer = async (
       bot.emit('game')
     }
     // Start in birds eye view mode for replays - emit event so overlay shows
-    customEvents.emit('kradle:birdsEyeViewFollow')
+    // Start in birds eye view for MCPR replays
+    const { setCamera } = require('../interactiveControls')
+    setCamera({ mode: 'birdsEyeView' })
   }
 
   // Ensure the client is in PLAY state for packet processing

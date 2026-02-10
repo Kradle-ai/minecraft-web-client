@@ -31,16 +31,15 @@ declare const customEvents: import('typed-emitter').default<{
   search (q: string): void
   activateItem (item: Item, slot: number, offhand: boolean): void
   hurtAnimation (yaw?: number): void
-  followingPlayer (username?: string): void // when following has begun
-  followingPlayerLost (): void // when following player is not longer found
   'kradle:command' (data: any): void // a command to run as the bot
-  'kradle:followPlayer' (data: any): void // request from kradle to follow a player
+  'kradle:followPlayer' (data: any): void // legacy: request from kradle to follow a player
   'kradle:reconnect' (data: any): void // request from kradle to reconnect
   'kradle:setAgentSkins' (data: any): void // request from kradle to setAgentSkins
   'kradle:releasePointerLock' (data?: any): void // request from kradle to release pointer lock
-  'kradle:birdsEyeViewFollow' (data?: any): void // request from kradle to set mode birdsEyeViewFollow
+  'kradle:birdsEyeViewFollow' (data?: any): void // legacy: request from kradle to set mode birdsEyeViewFollow
   'kradle:takeScreenshot' (data?: any): void // request from kradle to capture a screenshot
-  'kradle:freeRoamMode' (data?: any): void // request from kradle to set mode freeRoamMode
+  'kradle:freeRoamMode' (data?: any): void // legacy: request from kradle to set mode freeRoamMode
+  'kradle:setCamera' (data: any): void // request from kradle to set camera mode and target
   'kradle:sendRecordingMessageList' (data?: any): void // request from kradle to set recording message list
   agentSkinsUpdated (): void // emitted when agent skins map is updated
   recordingUpdate (data: any): void // emitted when recording state changes

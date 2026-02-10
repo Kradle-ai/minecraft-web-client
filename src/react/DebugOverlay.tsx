@@ -140,6 +140,7 @@ export default () => {
         // Ignore raycast errors (e.g., during replay when block intersect may be undefined)
         setCursorBlock(null)
       }
+
     }, 100)
 
     const notFrequentUpdateInterval = setInterval(async () => {

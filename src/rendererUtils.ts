@@ -2,7 +2,7 @@ import { subscribeKey } from 'valtio/utils'
 import { gameAdditionalState } from './globalState'
 import { options } from './optionsStorage'
 import { playerState } from './mineflayer/playerState'
-import { setThirdPersonCamera } from './follow'
+import { updateCameraForCurrentMode } from './interactiveControls'
 
 let currentFov = 0
 let targetFov = 0
@@ -91,6 +91,6 @@ export const watchFov = () => {
   })
 
   subscribeKey(gameAdditionalState, 'isSneaking', () => {
-    setThirdPersonCamera()
+    updateCameraForCurrentMode()
   })
 }

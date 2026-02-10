@@ -98,7 +98,7 @@ import { appViewer } from './appViewer'
 import createGraphicsBackend from 'renderer/viewer/three/graphicsBackend'
 import { subscribeKey } from 'valtio/utils'
 import { setupIframeComms } from './iframe'
-import { trackFollowerMovement } from './follow'
+import { trackCameraMovement } from './interactiveControls'
 import { renderChatOnCanvas } from './canvasChatRenderer'
 
 window.debug = debug
@@ -903,7 +903,7 @@ export async function connect (connectOptions: ConnectOptions) {
 
     initMotionTracking()
     dayCycle()
-    trackFollowerMovement()
+    trackCameraMovement()
 
     progress.setMessage('Setting callbacks')
 

@@ -3,7 +3,7 @@
 import { getThreeJsRendererMethods } from 'renderer/viewer/three/threeJsMethods'
 import { options } from './optionsStorage'
 import { musicSystem } from './sounds/musicSystem'
-import { reestablishFollowing } from './follow'
+import { reestablishFollowing } from './interactiveControls'
 import { toggleMic, toggleCamera, toggleRecording } from './controls'
 import { audioTrackScheduler } from './sounds/audioTrackScheduler'
 import { appQueryParams } from './appParams'
@@ -18,8 +18,9 @@ type IFrameSendablePayload =
   }
   | {
     source: 'minecraft-web-client';
-    action: 'followingPlayer';
-    username?: string;
+    action: 'cameraState';
+    mode: string;
+    target: string | null;
   }
   | {
     source: 'minecraft-web-client';
@@ -71,7 +72,7 @@ type IFrameSendablePayload =
     feature: 'recording' | 'camera' | 'voice';
   }
 
-type ReceivableActions = 'followPlayer' | 'command' | 'reconnect' | 'setAgentSkins' | 'releasePointerLock' | 'birdsEyeViewFollow' | 'takeScreenshot'
+type ReceivableActions = 'followPlayer' | 'command' | 'reconnect' | 'setAgentSkins' | 'releasePointerLock' | 'birdsEyeViewFollow' | 'takeScreenshot' | 'setCamera' | 'freeRoamMode'
 
 let playerPaused = false
 
@@ -196,22 +197,7 @@ export function setupIframeComms () {
       isCameraEnabled: false,
     })
   })
-  customEvents.on('followingPlayer', (username) => {
-    sendMessageToKradle({
-      action: 'followingPlayer',
-      username
-    })
-  })
-  customEvents.on('pointerLockReleased', () => {
-    sendMessageToKradle({
-      action: 'pointerLockReleased'
-    })
-  })
-  customEvents.on('followingPlayerLost', () => {
-    sendMessageToKradle({
-      action: 'followingPlayerLost'
-    })
-  })
+  // Camera state changes and pointer lock are reported by interactiveControls.ts directly
   // Listen for replay progress updates from serverless packet replay
   customEvents.on('replayProgress', (data) => {
     sendMessageToKradle({
