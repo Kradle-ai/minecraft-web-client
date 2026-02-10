@@ -679,7 +679,7 @@ const mainPacketsReplayer = async (
     // NBT-wrapped: {type: "string", value: "text"} or {type: "compound", value: {text: "..."}}
     if (val.value !== undefined && val.type !== undefined) return chatToText(val.value)
     // Chat component: {text: "hello", extra: [{text: " world"}]}
-    let result = val.text !== undefined ? chatToText(val.text) : ''
+    let result = val.text === undefined ? '' : chatToText(val.text)
     if (Array.isArray(val.extra)) {
       for (const part of val.extra) {
         result += chatToText(part)
@@ -696,7 +696,7 @@ const mainPacketsReplayer = async (
       case 'player_chat': {
         const msg = chatToText(packet.params?.plainMessage || packet.params?.signedChatContent)
         const sender = chatToText(packet.params?.networkName || packet.params?.senderName)
-        if (msg && sender && !msg.includes("I'm sorry, I'm having trouble generating a response")) {
+        if (msg && sender && !msg.includes('I\'m sorry, I\'m having trouble generating a response')) {
           chatMarkers.push({ timeMs: packet.timestamp, sender, message: msg })
         }
         break
