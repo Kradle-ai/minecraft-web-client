@@ -662,6 +662,79 @@ const mainPacketsReplayer = async (
   packetsReplayState.totalDurationMs = totalReplayTime
   packetsReplayState.currentTimeMs = 0
 
+  // Extract chat markers for timeline display
+  const PLAYER_CHAT_TRANSLATE_KEYS = new Set([
+    'chat.type.text',
+    'chat.type.emote',
+    'chat.type.announcement',
+    'chat.type.team.text',
+    'chat.type.team.sent',
+  ])
+
+  // Extract plain text from Minecraft chat components, NBT-wrapped values, or plain strings
+  const chatToText = (val: any): string => {
+    if (typeof val === 'string') return val
+    if (val === null || val === undefined) return ''
+    if (typeof val !== 'object') return String(val)
+    // NBT-wrapped: {type: "string", value: "text"} or {type: "compound", value: {text: "..."}}
+    if (val.value !== undefined && val.type !== undefined) return chatToText(val.value)
+    // Chat component: {text: "hello", extra: [{text: " world"}]}
+    let result = val.text !== undefined ? chatToText(val.text) : ''
+    if (Array.isArray(val.extra)) {
+      for (const part of val.extra) {
+        result += chatToText(part)
+      }
+    }
+    // Fallback: insertion field often has the raw player name
+    if (!result && val.insertion) return chatToText(val.insertion)
+    return result
+  }
+
+  const chatMarkers: Array<{ timeMs: number, sender: string, message: string }> = []
+  for (const packet of packetsWithTimestamp) {
+    switch (packet.name) {
+      case 'player_chat': {
+        const msg = chatToText(packet.params?.plainMessage || packet.params?.signedChatContent)
+        const sender = chatToText(packet.params?.networkName || packet.params?.senderName)
+        if (msg && sender && !msg.includes("I'm sorry, I'm having trouble generating a response")) {
+          chatMarkers.push({ timeMs: packet.timestamp, sender, message: msg })
+        }
+        break
+      }
+      case 'profileless_chat': {
+        try {
+          const nameJson = JSON.parse(chatToText(packet.params?.name) || '""')
+          const sender = typeof nameJson === 'string' ? nameJson : (nameJson?.text || '')
+          const msgJson = JSON.parse(chatToText(packet.params?.message) || '""')
+          const message = typeof msgJson === 'string' ? msgJson : (msgJson?.text || '')
+          if (sender && message) {
+            chatMarkers.push({ timeMs: packet.timestamp, sender, message })
+          }
+        } catch { /* skip malformed */ }
+        break
+      }
+      case 'system_chat': {
+        try {
+          const rawContent = chatToText(packet.params?.content) || packet.params?.content
+          const content = typeof rawContent === 'string'
+            ? JSON.parse(rawContent)
+            : rawContent
+          if (content?.translate && PLAYER_CHAT_TRANSLATE_KEYS.has(content.translate) && Array.isArray(content.with) && content.with.length >= 2) {
+            const sender = chatToText(content.with[0])
+            const message = chatToText(content.with[1])
+            if (sender && message) {
+              chatMarkers.push({ timeMs: packet.timestamp, sender, message })
+            }
+          }
+        } catch { /* skip malformed */ }
+        break
+      }
+      // No default
+    }
+  }
+  packetsReplayState.chatMarkers = chatMarkers
+  console.log(`[replay] Extracted ${chatMarkers.length} chat markers for timeline`)
+
   // ============================================================
   // TIMER-BASED DRIP SYSTEM - mimics real network event delivery
   // ============================================================

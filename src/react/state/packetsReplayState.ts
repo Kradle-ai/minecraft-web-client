@@ -2,8 +2,15 @@ import { proxy } from 'valtio'
 import type { PacketData } from '../ReplayPanel'
 import { appQueryParams, updateQsParam } from '../../appParams'
 
+export interface ChatMarker {
+  timeMs: number
+  sender: string
+  message: string
+}
+
 export const packetsReplayState = proxy({
   packetsPlayback: [] as PacketData[],
+  chatMarkers: [] as ChatMarker[],
   isOpen: false,
   isMinimized: false,
   replayName: '',

@@ -1,9 +1,26 @@
-import { useRef, useState, useCallback, useEffect } from 'react'
+import { useRef, useState, useCallback, useEffect, useMemo } from 'react'
 import { useSnapshot } from 'valtio'
 import { packetsReplayState } from '../../state/packetsReplayState'
+import type { ChatMarker } from '../../state/packetsReplayState'
 import { appQueryParams } from '../../../appParams'
 
 const HIDE_DELAY_MS = 2500
+
+const MARKER_COLORS = [
+  '#f87171', // red
+  '#2dd4bf', // teal
+  '#a78bfa', // violet
+  '#fb923c', // orange
+  '#38bdf8', // sky
+  '#f472b6', // pink
+  '#34d399', // emerald
+  '#fbbf24', // amber
+]
+
+function getPlayerColor (sender: string, senderList: string[]): string {
+  const index = senderList.indexOf(sender)
+  return MARKER_COLORS[index % MARKER_COLORS.length]
+}
 
 function formatTime (ms: number): string {
   const totalSeconds = Math.floor(ms / 1000)
@@ -32,6 +49,62 @@ export default function ReplayTimeline () {
     ? state.currentTimeMs / state.totalDurationMs
     : 0
   const progress = dragProgress ?? realProgress
+
+  const chatMarkers: ChatMarker[] = Array.isArray(state.chatMarkers) ? [...state.chatMarkers] as ChatMarker[] : []
+  const markerCount = chatMarkers.length
+  const uniqueSenders = useMemo(() => {
+    const seen = new Set<string>()
+    const result: string[] = []
+    for (const m of chatMarkers) {
+      if (!seen.has(m.sender)) {
+        seen.add(m.sender)
+        result.push(m.sender)
+      }
+    }
+    return result
+  }, [markerCount])
+
+  // Deduplicate clustered markers: ensure minimum spacing, rotate through senders
+  const displayMarkers = useMemo(() => {
+    if (markerCount === 0 || state.totalDurationMs === 0) return []
+    const minGapPct = 0.008 // minimum 0.8% gap between displayed markers
+    const sorted = [...chatMarkers].sort((a, b) => a.timeMs - b.timeMs)
+    const result: ChatMarker[] = []
+    let lastPct = -Infinity
+    const recentSenders: string[] = []
+    for (const marker of sorted) {
+      const pct = marker.timeMs / state.totalDurationMs
+      if (pct - lastPct < minGapPct) {
+        if (recentSenders.includes(marker.sender)) continue
+      } else {
+        recentSenders.length = 0
+      }
+      result.push(marker)
+      lastPct = pct
+      recentSenders.push(marker.sender)
+      if (recentSenders.length > uniqueSenders.length) {
+        recentSenders.shift()
+      }
+    }
+    return result
+  }, [markerCount, state.totalDurationMs, uniqueSenders.length])
+
+  // Find the chat marker closest to the hover position
+  const hoveredMarker = useMemo(() => {
+    if (hoverProgress === null || state.totalDurationMs === 0 || markerCount === 0) return null
+    const hoverMs = hoverProgress * state.totalDurationMs
+    const thresholdMs = state.totalDurationMs * 0.008 // ~0.8% of timeline
+    let closest: ChatMarker | null = null
+    let closestDist = Infinity
+    for (const marker of chatMarkers) {
+      const dist = Math.abs(marker.timeMs - hoverMs)
+      if (dist < thresholdMs && dist < closestDist) {
+        closestDist = dist
+        closest = marker
+      }
+    }
+    return closest
+  }, [hoverProgress, markerCount, state.totalDurationMs])
 
   const showControls = useCallback(() => {
     setIsVisible(true)
@@ -134,17 +207,21 @@ export default function ReplayTimeline () {
         left: 0,
         right: 0,
         zIndex: 3000,
-        background: shouldShow ? 'linear-gradient(transparent, rgba(0, 0, 0, 0.6))' : 'none',
-        padding: '16px 10px 14px 10px',
+        background: shouldShow
+          ? isBarHovered || isDragging
+            ? 'linear-gradient(transparent, rgba(0, 0, 0, 0.15) 20%, rgba(0, 0, 0, 0.6))'
+            : 'linear-gradient(transparent, rgba(0, 0, 0, 0.6))'
+          : 'none',
+        padding: isBarHovered || isDragging ? '40px 10px 14px 10px' : '16px 10px 14px 10px',
         display: 'flex',
         flexDirection: 'column',
         gap: '0px',
         pointerEvents: shouldShow ? 'auto' : 'none',
         opacity: shouldShow ? 1 : 0,
-        transition: 'opacity 0.2s ease, background 0.2s ease'
+        transition: 'opacity 0.2s ease, background 0.3s ease, padding 0.2s ease'
       }}
     >
-      {/* Progress bar with invisible hit area */}
+      {/* Progress bar with invisible hit area — taller on hover to cover dots */}
       <div
         ref={progressBarRef}
         onMouseDown={handleMouseDown}
@@ -153,10 +230,11 @@ export default function ReplayTimeline () {
         onMouseEnter={handleBarMouseEnter}
         style={{
           position: 'relative',
-          height: '24px',
+          height: isBarHovered || isDragging ? '48px' : '24px',
           cursor: 'pointer',
           display: 'flex',
-          alignItems: 'center'
+          alignItems: 'flex-end',
+          transition: 'height 0.15s ease',
         }}
       >
         {/* Visible bar background */}
@@ -165,6 +243,7 @@ export default function ReplayTimeline () {
             position: 'absolute',
             left: 0,
             right: 0,
+            bottom: 0,
             height: isBarHovered || isDragging ? '10px' : '4px',
             background: 'rgba(255, 255, 255, 0.3)',
             transition: 'height 0.1s ease'
@@ -176,6 +255,7 @@ export default function ReplayTimeline () {
           style={{
             position: 'absolute',
             left: 0,
+            bottom: 0,
             height: isBarHovered || isDragging ? '10px' : '4px',
             width: `${progress * 100}%`,
             background: '#ff0000',
@@ -188,36 +268,108 @@ export default function ReplayTimeline () {
           style={{
             position: 'absolute',
             left: `${progress * 100}%`,
-            top: '50%',
-            transform: 'translate(-50%, -50%)',
+            bottom: isBarHovered || isDragging ? '5px' : '2px',
+            transform: 'translate(-50%, 50%)',
             width: isBarHovered || isDragging ? '12px' : '0px',
             height: isBarHovered || isDragging ? '12px' : '0px',
             borderRadius: '50%',
             background: '#ff0000',
-            transition: 'width 0.1s ease, height 0.1s ease',
+            transition: 'width 0.1s ease, height 0.1s ease, bottom 0.1s ease',
             pointerEvents: 'none'
           }}
         />
 
-        {/* Hover time tooltip */}
+        {/* Chat markers — float above the bar on hover */}
+        {(isBarHovered || isDragging) && displayMarkers.map((marker, i) => {
+          const pos = state.totalDurationMs > 0 ? (marker.timeMs / state.totalDurationMs) * 100 : 0
+          const color = getPlayerColor(marker.sender, uniqueSenders)
+          return (
+            <div
+              key={i}
+              style={{
+                position: 'absolute',
+                left: `${pos}%`,
+                bottom: 16,
+                transform: 'translateX(-50%)',
+                width: 12,
+                height: 12,
+                borderRadius: '50%',
+                background: color,
+                border: '1.5px solid rgba(255, 255, 255, 0.5)',
+                pointerEvents: 'none',
+              }}
+            />
+          )
+        })}
+
+        {/* Hover scrub line — thin vertical line from bar through dots */}
+        {hoverProgress !== null && (isBarHovered || isDragging) && (
+          <div
+            style={{
+              position: 'absolute',
+              left: `${hoverProgress * 100}%`,
+              bottom: 0,
+              height: 32,
+              width: 1,
+              background: 'linear-gradient(to top, rgba(255,255,255,0.5), rgba(255,255,255,0.15))',
+              transform: 'translateX(-0.5px)',
+              pointerEvents: 'none',
+            }}
+          />
+        )}
+
+        {/* Hover tooltip — time + chat message if near a marker */}
         {hoverProgress !== null && (
           <div
             style={{
               position: 'absolute',
               left: `${hoverProgress * 100}%`,
-              bottom: '100%',
+              bottom: 34,
               transform: 'translateX(-50%)',
-              marginBottom: '10px',
-              padding: '4px 8px',
-              background: 'rgba(0, 0, 0, 0.8)',
-              color: '#fff',
-              fontSize: '14px',
-              borderRadius: '3px',
-              whiteSpace: 'nowrap',
-              pointerEvents: 'none'
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 3,
+              pointerEvents: 'none',
             }}
           >
-            {formatTime(hoverTimeMs)}
+            {hoveredMarker && (
+              <div
+                style={{
+                  padding: '4px 10px',
+                  background: 'rgba(0, 0, 0, 0.8)',
+                  backdropFilter: 'blur(8px)',
+                  color: '#fff',
+                  fontSize: '14px',
+                  borderRadius: '6px',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  whiteSpace: 'nowrap',
+                  maxWidth: 300,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+              >
+                <span style={{ color: getPlayerColor(hoveredMarker.sender, uniqueSenders), fontWeight: 600 }}>
+                  {hoveredMarker.sender}
+                </span>
+                {' '}
+                <span style={{ color: 'rgba(255,255,255,0.7)' }}>{hoveredMarker.message}</span>
+              </div>
+            )}
+            <div
+              style={{
+                padding: '3px 8px',
+                background: 'rgba(0, 0, 0, 0.7)',
+                backdropFilter: 'blur(8px)',
+                color: 'rgba(255, 255, 255, 0.9)',
+                fontSize: '14px',
+                fontFamily: 'monospace',
+                borderRadius: '4px',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {formatTime(hoverTimeMs)}
+            </div>
           </div>
         )}
       </div>
