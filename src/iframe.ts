@@ -88,56 +88,81 @@ export function isGamePaused (): boolean {
   return playerPaused
 }
 
+function pausePlayback () {
+  if (playerPaused) return
+  bot.chat('/replay view pause')
+  packetsReplayState.isPlaying = false
+  void (async () => {
+    const renderer = getThreeJsRendererMethods()
+    if (!renderer) return
+
+    playerPaused = true
+    audioTrackScheduler.setPlaying(false)
+
+    const playerObjects = await Promise.all(
+      Object.values(bot.entities).map(entity => renderer.getPlayerObject(entity.id))
+    )
+
+    for (const playerObject of playerObjects) {
+      if (playerObject?.animation) {
+        playerObject.animation.paused = true
+      }
+    }
+  })()
+}
+
+function unpausePlayback () {
+  if (!playerPaused) return
+  bot.chat('/replay view unpause')
+  packetsReplayState.isPlaying = true
+  void (async () => {
+    const renderer = getThreeJsRendererMethods()
+    if (!renderer) return
+
+    playerPaused = false
+    audioTrackScheduler.setPlaying(true)
+
+    const playerObjects = await Promise.all(
+      Object.values(bot.entities).map(entity => renderer.getPlayerObject(entity.id))
+    )
+
+    for (const playerObject of playerObjects) {
+      if (playerObject?.animation) {
+        playerObject.animation.paused = false
+      }
+    }
+  })()
+}
+
 export function registerPauseHotkey () {
   const onKeyDown = (e: KeyboardEvent) => {
     if (e.repeat) return
 
-    // "P" key to toggle pause/unpause
-    if (e.code === 'KeyP' && !e.repeat && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+    // "J" key to jump back 10 seconds, pause at start
+    if (e.code === 'KeyJ' && !e.repeat && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
       e.preventDefault()
+      const targetMs = Math.max(0, packetsReplayState.currentTimeMs - 10_000)
+      audioTrackScheduler.setSeekTarget(targetMs)
+      packetsReplayState.seekTargetMs = targetMs
+    }
 
+    // "L" key to leap forward 10 seconds, pause at end
+    if (e.code === 'KeyL' && !e.repeat && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+      e.preventDefault()
+      const rawTarget = packetsReplayState.currentTimeMs + 10_000
+      const targetMs = Math.min(packetsReplayState.totalDurationMs, rawTarget)
+      audioTrackScheduler.setSeekTarget(targetMs)
+      packetsReplayState.seekTargetMs = targetMs
+      if (rawTarget >= packetsReplayState.totalDurationMs) pausePlayback()
+    }
+
+    // "K" key to toggle pause/unpause
+    if (e.code === 'KeyK' && !e.repeat && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+      e.preventDefault()
       if (playerPaused) {
-        // Unpause
-        bot.chat('/replay view unpause')
-        packetsReplayState.isPlaying = true
-        void (async () => {
-          const renderer = getThreeJsRendererMethods()
-          if (!renderer) return
-
-          playerPaused = false
-          audioTrackScheduler.setPlaying(true)
-
-          const playerObjects = await Promise.all(
-            Object.values(bot.entities).map(entity => renderer.getPlayerObject(entity.id))
-          )
-
-          for (const playerObject of playerObjects) {
-            if (playerObject?.animation) {
-              playerObject.animation.paused = false
-            }
-          }
-        })()
+        unpausePlayback()
       } else {
-      // Pause
-        bot.chat('/replay view pause')
-        packetsReplayState.isPlaying = false
-        void (async () => {
-          const renderer = getThreeJsRendererMethods()
-          if (!renderer) return
-
-          playerPaused = true
-          audioTrackScheduler.setPlaying(false)
-
-          const playerObjects = await Promise.all(
-            Object.values(bot.entities).map(entity => renderer.getPlayerObject(entity.id))
-          )
-
-          for (const playerObject of playerObjects) {
-            if (playerObject?.animation) {
-              playerObject.animation.paused = true
-            }
-          }
-        })()
+        pausePlayback()
       }
     }
   }

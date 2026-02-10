@@ -1281,8 +1281,15 @@ export const toggleCamera = async () => {
   }
 }
 
+let countdownAbortController: AbortController | null = null
+
 export const toggleRecording = async () => {
   console.log('[recording] toggleRecording called, isRecording:', recordingState.isRecording)
+  if (countdownAbortController) {
+    // Countdown in progress — cancel it
+    countdownAbortController.abort()
+    return
+  }
   if (recordingState.isRecording) {
     stopCanvasRecording()
   } else {
@@ -1388,8 +1395,44 @@ const drawRoundedRect = (
   ctx.closePath()
 }
 
-const showRecordingCountdown = async (): Promise<void> => {
+const showRecordingCountdown = async (): Promise<boolean> => {
+  const abortController = new AbortController()
+  countdownAbortController = abortController
+
   return new Promise((resolve) => {
+    const pendingTimeouts: number[] = []
+
+    let resolved = false
+    const cleanup = (completed: boolean) => {
+      if (resolved) return
+      resolved = true
+      for (const t of pendingTimeouts) clearTimeout(t)
+      overlay.remove()
+      countdownAbortController = null
+      window.removeEventListener('keydown', handleCancelKey, true)
+      document.removeEventListener('pointerlockchange', handlePointerLockExit)
+      resolve(completed)
+    }
+
+    const handleCancelKey = (e: KeyboardEvent) => {
+      if (e.code === 'Escape' || e.code === 'KeyR') {
+        cleanup(false)
+      }
+    }
+
+    // ESC exits pointer lock — detect that as a cancel too
+    const handlePointerLockExit = () => {
+      if (!document.pointerLockElement) {
+        cleanup(false)
+      }
+    }
+
+    window.addEventListener('keydown', handleCancelKey, true)
+    document.addEventListener('pointerlockchange', handlePointerLockExit)
+    abortController.signal.addEventListener('abort', () => {
+      cleanup(false)
+    })
+
     // Create overlay container
     const overlay = document.createElement('div')
     overlay.id = 'recording-countdown-overlay'
@@ -1456,6 +1499,8 @@ const showRecordingCountdown = async (): Promise<void> => {
     let index = 0
 
     const showNext = () => {
+      if (abortController.signal.aborted) return
+
       if (index >= counts.length) {
         // Show "Recording" with animated red dot
         labelEl.style.opacity = '0'
@@ -1490,11 +1535,10 @@ const showRecordingCountdown = async (): Promise<void> => {
         `
         document.head.appendChild(style)
 
-        setTimeout(() => {
+        pendingTimeouts.push(window.setTimeout(() => {
           style.remove()
-          overlay.remove()
-          resolve()
-        }, 600)
+          cleanup(true)
+        }, 600))
         return
       }
 
@@ -1504,18 +1548,20 @@ const showRecordingCountdown = async (): Promise<void> => {
 
       // Trigger animation
       requestAnimationFrame(() => {
+        if (abortController.signal.aborted) return
         countdownEl.style.opacity = '1'
         countdownEl.style.transform = 'scale(1)'
       })
 
       // Fade out before next number
-      setTimeout(() => {
+      pendingTimeouts.push(window.setTimeout(() => {
+        if (abortController.signal.aborted) return
         countdownEl.style.opacity = '0'
         countdownEl.style.transform = 'scale(1.3)'
-      }, 650)
+      }, 650))
 
       index++
-      setTimeout(showNext, 1000)
+      pendingTimeouts.push(window.setTimeout(showNext, 1000))
     }
 
     showNext()
@@ -1538,8 +1584,12 @@ const startCanvasRecording = async () => {
   }
   console.log('[recording] Found viewer-canvas:', gameCanvas.width, 'x', gameCanvas.height)
 
-  // Show countdown before starting
-  await showRecordingCountdown()
+  // Show countdown before starting (cancellable with ESC or R)
+  const completed = await showRecordingCountdown()
+  if (!completed) {
+    console.log('[recording] Countdown cancelled')
+    return
+  }
 
   try {
     // Create recording canvas at 1920x1080

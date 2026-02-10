@@ -25,6 +25,7 @@ export default function ReplayTimeline () {
   const [hoverProgress, setHoverProgress] = useState<number | null>(null)
   const [isBarHovered, setIsBarHovered] = useState(false)
   const [isVisible, setIsVisible] = useState(false)
+  const [isPlayHovered, setIsPlayHovered] = useState(false)
 
   const progress = state.totalDurationMs > 0
     ? state.currentTimeMs / state.totalDurationMs
@@ -229,27 +230,68 @@ export default function ReplayTimeline () {
         }}
       >
         {/* Play/Pause */}
-        <button
-          onClick={handlePlayPause}
-          style={{
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            padding: '4px',
-            color: '#fff',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}
+        <div
+          style={{ position: 'relative', display: 'flex', alignItems: 'center' }}
+          onMouseEnter={() => setIsPlayHovered(true)}
+          onMouseLeave={() => setIsPlayHovered(false)}
         >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
-            {state.isPlaying ? (
-              <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
-            ) : (
-              <path d="M8 5v14l11-7z" />
-            )}
-          </svg>
-        </button>
+          <button
+            onClick={handlePlayPause}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              padding: '4px',
+              color: '#fff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+              {state.isPlaying ? (
+                <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+              ) : (
+                <path d="M8 5v14l11-7z" />
+              )}
+            </svg>
+          </button>
+          {isPlayHovered && (
+            <div
+              style={{
+                position: 'absolute',
+                bottom: '100%',
+                left: 0,
+                marginBottom: 24,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                background: 'rgba(0, 0, 0, 0.7)',
+                padding: '6px 14px',
+                borderRadius: 6,
+                fontSize: 10,
+                fontFamily: 'system-ui, -apple-system, sans-serif',
+                whiteSpace: 'nowrap',
+                pointerEvents: 'none',
+                color: '#fff',
+              }}
+            >
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, borderRadius: 4, border: '1px solid rgba(156,163,175,0.4)', background: 'rgba(0,0,0,0.35)', padding: '2px 6px', fontWeight: 600, fontSize: 10 }}>
+                J
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12.5 4l-9 8 9 8V4z" /><path d="M21.5 4l-9 8 9 8V4z" /></svg>
+              </span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, borderRadius: 4, border: '1px solid rgba(156,163,175,0.4)', background: 'rgba(0,0,0,0.35)', padding: '2px 6px', fontWeight: 600, fontSize: 10 }}>
+                K
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M6 4l10 8-10 8V4z" /><rect x="17" y="4" width="3" height="16" /></svg>
+              </span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, borderRadius: 4, border: '1px solid rgba(156,163,175,0.4)', background: 'rgba(0,0,0,0.35)', padding: '2px 6px', fontWeight: 600, fontSize: 10 }}>
+                L
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M11.5 20l9-8-9-8v16z" /><path d="M2.5 20l9-8-9-8v16z" /></svg>
+              </span>
+              <span style={{ fontWeight: 500, letterSpacing: '0.025em', color: 'rgba(255,255,255,0.8)', textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}>Playback</span>
+            </div>
+          )}
+        </div>
 
         {/* Time display */}
         <div
