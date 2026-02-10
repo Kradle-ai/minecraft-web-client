@@ -3,7 +3,7 @@
 import { getThreeJsRendererMethods } from 'renderer/viewer/three/threeJsMethods'
 import { options } from './optionsStorage'
 import { musicSystem } from './sounds/musicSystem'
-import { reestablishFollowing } from './interactiveControls'
+import { reestablishFollowing, reportCameraState } from './interactiveControls'
 import { toggleMic, toggleCamera, toggleRecording } from './controls'
 import { audioTrackScheduler } from './sounds/audioTrackScheduler'
 import { appQueryParams } from './appParams'
@@ -21,6 +21,13 @@ type IFrameSendablePayload =
     action: 'cameraState';
     mode: string;
     target: string | null;
+    isPaused: boolean;
+    currentTimeMs: number;
+    totalDurationMs: number;
+    speed: number;
+    isRecording: boolean;
+    isMicEnabled: boolean;
+    isCameraEnabled: boolean;
   }
   | {
     source: 'minecraft-web-client';
@@ -92,6 +99,7 @@ function pausePlayback () {
   if (playerPaused) return
   bot.chat('/replay view pause')
   packetsReplayState.isPlaying = false
+  reportCameraState()
   void (async () => {
     const renderer = getThreeJsRendererMethods()
     if (!renderer) return
@@ -115,6 +123,7 @@ function unpausePlayback () {
   if (!playerPaused) return
   bot.chat('/replay view unpause')
   packetsReplayState.isPlaying = true
+  reportCameraState()
   void (async () => {
     const renderer = getThreeJsRendererMethods()
     if (!renderer) return
@@ -144,6 +153,7 @@ export function registerPauseHotkey () {
       const targetMs = Math.max(0, packetsReplayState.currentTimeMs - 10_000)
       audioTrackScheduler.setSeekTarget(targetMs)
       packetsReplayState.seekTargetMs = targetMs
+      reportCameraState()
     }
 
     // "L" key to leap forward 10 seconds, pause at end
@@ -154,6 +164,7 @@ export function registerPauseHotkey () {
       audioTrackScheduler.setSeekTarget(targetMs)
       packetsReplayState.seekTargetMs = targetMs
       if (rawTarget >= packetsReplayState.totalDurationMs) pausePlayback()
+      reportCameraState()
     }
 
     // "K" key to toggle pause/unpause
@@ -283,6 +294,7 @@ export function setupIframeComms () {
         audioTrackScheduler.setSeekTarget(targetMs)
         // Set seek target for serverless packet replay
         packetsReplayState.seekTargetMs = targetMs
+        reportCameraState()
         console.log('[iframe] Seeking to', targetSeconds, 'seconds (', targetMs, 'ms)')
       }
 
@@ -295,6 +307,7 @@ export function setupIframeComms () {
     if (command === 'replay view pause') {
       // Pause the packet replay and all player animations
       packetsReplayState.isPlaying = false
+      reportCameraState()
       void (async () => {
 
         const renderer = getThreeJsRendererMethods()
@@ -318,6 +331,7 @@ export function setupIframeComms () {
     if (command === 'replay view unpause' || command === 'replay view resume' || command === 'replay view play') {
       // Resume the packet replay and all player animations
       packetsReplayState.isPlaying = true
+      reportCameraState()
       void (async () => {
 
         const renderer = getThreeJsRendererMethods()
@@ -341,6 +355,7 @@ export function setupIframeComms () {
     if (command === 'replay view restart') {
       // Restart the packet replay from the beginning
       packetsReplayState.restartRequested = true
+      reportCameraState()
       void (async () => {
         const renderer = getThreeJsRendererMethods()
         if (!renderer) return
@@ -365,6 +380,7 @@ export function setupIframeComms () {
     if (speedMatch) {
       const speed = parseFloat(speedMatch[1])
       packetsReplayState.speed = speed
+      reportCameraState()
       console.log('[iframe] Set replay speed to', speed)
     }
 

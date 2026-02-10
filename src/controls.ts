@@ -8,7 +8,7 @@ import { CommandEventArgument, SchemaCommandInput } from 'contro-max/build/types
 import { stringStartsWith } from 'contro-max/build/stringUtils'
 import { GameMode } from 'mineflayer'
 import { isGameActive, showModal, gameAdditionalState, activeModalStack, hideCurrentModal, miscUiState, hideModal, hideAllModals } from './globalState'
-import { getSpectatorCameraPosition, getSpectatorCameraDirection, setSpectatorCameraPosition } from './interactiveControls'
+import { getSpectatorCameraPosition, getSpectatorCameraDirection, setSpectatorCameraPosition, reportCameraState } from './interactiveControls'
 import { appViewer } from './appViewer'
 import { goFullscreen, isInRealGameSession, pointerLock, reloadChunks } from './utils'
 import { options } from './optionsStorage'
@@ -1667,6 +1667,7 @@ const startCanvasRecording = async () => {
     customEvents.emit('recordingUpdate', {
       isRecording: true,
     })
+    reportCameraState()
     drawFrame()
 
     // Capture the recording canvas stream at 60fps
@@ -1790,6 +1791,7 @@ const startCanvasRecording = async () => {
     customEvents.emit('recordingUpdate', {
       isRecording: false,
     })
+    reportCameraState()
   }
 }
 
@@ -1802,6 +1804,7 @@ const stopCanvasRecording = () => {
     customEvents.emit('recordingUpdate', {
       isRecording: false,
     })
+    reportCameraState()
 
     // Stop animation frame
     if (recordingState.animationFrameId) {
