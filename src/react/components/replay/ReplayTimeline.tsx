@@ -22,14 +22,16 @@ export default function ReplayTimeline () {
   const progressBarRef = useRef<HTMLDivElement>(null)
   const hideTimeoutRef = useRef<number | null>(null)
   const [isDragging, setIsDragging] = useState(false)
+  const [dragProgress, setDragProgress] = useState<number | null>(null)
   const [hoverProgress, setHoverProgress] = useState<number | null>(null)
   const [isBarHovered, setIsBarHovered] = useState(false)
   const [isVisible, setIsVisible] = useState(false)
   const [isPlayHovered, setIsPlayHovered] = useState(false)
 
-  const progress = state.totalDurationMs > 0
+  const realProgress = state.totalDurationMs > 0
     ? state.currentTimeMs / state.totalDurationMs
     : 0
+  const progress = dragProgress ?? realProgress
 
   const showControls = useCallback(() => {
     setIsVisible(true)
@@ -54,26 +56,26 @@ export default function ReplayTimeline () {
     return Math.max(0, Math.min(1, x / rect.width))
   }, [])
 
-  const handleSeek = useCallback((clientX: number) => {
-    const newProgress = calculateProgress(clientX)
-    const newTimeMs = newProgress * state.totalDurationMs
-    packetsReplayState.seekTargetMs = newTimeMs
-  }, [calculateProgress, state.totalDurationMs])
-
   const handleMouseDown = (e: React.MouseEvent) => {
     setIsDragging(true)
-    handleSeek(e.clientX)
+    setDragProgress(calculateProgress(e.clientX))
   }
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
     if (isDragging) {
-      handleSeek(e.clientX)
+      setDragProgress(calculateProgress(e.clientX))
     }
-  }, [isDragging, handleSeek])
+  }, [isDragging, calculateProgress])
 
-  const handleMouseUp = useCallback(() => {
+  const handleMouseUp = useCallback((e: MouseEvent) => {
+    if (isDragging) {
+      const finalProgress = calculateProgress(e.clientX)
+      const newTimeMs = finalProgress * state.totalDurationMs
+      packetsReplayState.seekTargetMs = newTimeMs
+    }
     setIsDragging(false)
-  }, [])
+    setDragProgress(null)
+  }, [isDragging, calculateProgress, state.totalDurationMs])
 
   const handleBarMouseMove = (e: React.MouseEvent) => {
     const newProgress = calculateProgress(e.clientX)
