@@ -15,7 +15,7 @@ export interface CameraState {
 // ===== Reactive State =====
 
 export const cameraState = proxy<CameraState>({
-  mode: 'firstPerson',
+  mode: 'birdsEye',
   target: null
 })
 
