@@ -1303,7 +1303,7 @@ const sendUnauthorizedMessage = (feature: 'recording' | 'camera' | 'voice') => {
 }
 
 // C key to toggle camera
-if (appQueryParams.isPlayback === 'true') {
+if (appQueryParams.replayUrl) {
   window.addEventListener('keydown', (e) => {
     if (e.code === 'KeyC' && !e.repeat && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
       // Don't toggle if user is typing in an input
