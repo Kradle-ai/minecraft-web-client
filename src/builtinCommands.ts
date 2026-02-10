@@ -7,7 +7,7 @@ import { copyFilesAsync, uniqueFileNameFromWorldName } from './browserfs'
 import { saveServer } from './flyingSquidUtils'
 import { setLoadingScreenStatus } from './appStatus'
 import { displayClientChat } from './botUtils'
-import { setFollowingPlayer } from './follow'
+import { setCamera } from './interactiveControls'
 
 const notImplemented = () => {
   return 'Not implemented yet'
@@ -134,8 +134,8 @@ export const commands: Array<{
   {
     command: ['/follow'],
     alwaysAvailable: true,
-    async invoke ([username]) {
-      await setFollowingPlayer(username)
+    invoke ([username]) {
+      setCamera({ mode: username ? 'thirdPerson' : 'firstPerson', target: username })
     }
   },
   {

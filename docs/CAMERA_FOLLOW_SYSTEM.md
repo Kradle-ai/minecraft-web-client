@@ -10,30 +10,36 @@ The minecraft-web-client features a camera system that separates camera position
 
 - **Bot Position** (`bot.entity.position`): The player entity's position on the Minecraft server
 - **Spectator Camera Position** (`spectatorCameraPosition`): Independent camera position for free-roam viewing
-- **Camera Rotation** (`bot.entity.yaw/pitch`): Shared between bot and camera for view direction
+- **Camera Rotation**: In first-person mode, uses `bot.entity.yaw/pitch`. In free-roam/spectator mode, uses independent spectator direction (`spectatorCameraYaw/Pitch`) decoupled from bot.entity so replay packets cannot overwrite it
 
 This separation allows the camera to move freely through the world while the bot remains at its spawn location, bypassing the need for teleport permissions.
 
 ## Camera Modes
 
-### 1. First Person Mode (`FIRST_PERSON`)
+### 1. First Person Mode (`firstPerson`)
 - Default mode for direct bot control
 - Camera follows bot position
 - Full keyboard and mouse control enabled
 - Used when not following any player
 
-### 2. Third Person Follow Mode (`THIRD_PERSON`)
+### 2. Third Person Follow Mode (`thirdPerson`)
 - Camera positioned behind and above a followed player
 - Automatically tracks the target player's movement
 - Camera looks in the same direction as the followed player
 - Keyboard controls disabled during following
 
-### 3. Birds Eye View Mode (`BIRDS_EYE_VIEW_FOLLOW`)
+### 3. Birds Eye View Mode (`birdsEye`)
 - Dynamic overhead view of all players
 - Camera position calculated as center point of all active players
 - Height and offset adjust based on player spread
 - Provides tactical overview of player positions
 - Filters out system entities ("KradleWebViewer", "watcher")
+
+### 4. Free Roam Mode (`freeRoam`)
+- Independent spectator camera with WASD + mouse control
+- Camera position and direction are fully decoupled from bot.entity
+- Entered by clicking the overlay in thirdPerson/birdsEye or via postMessage
+- Pointer lock enables mouse-look; WASD moves relative to current view direction
 
 ## Spectator Camera Implementation
 
@@ -94,23 +100,34 @@ The system updates `worldView.updatePosition()` with the spectator camera positi
 - Elevates camera 2 blocks above player
 - Returns position with player's yaw direction
 
-### `setFollowingPlayer(username)`
-- Manages transitions between camera modes
-- Handles player entity loading with retry logic
+### `setCamera({ mode, target? })`
+- Manages transitions between all camera modes
+- Handles player entity loading with retry logic for thirdPerson
 - Controls `controMax.enabled` state for keyboard input
+- Reports camera state to parent via postMessage
 
-### `setSpectatorCameraPosition(pos)`
-- Stores independent camera position
+### `setSpectatorCameraPosition(pos, yaw?, pitch?)`
+- Stores independent camera position and optional direction
 - Enables camera movement without bot movement
-- Cleared when switching to follow modes
+- Cleared when switching to firstPerson, thirdPerson, or birdsEye modes
+
+### `getSpectatorCameraDirection()`
+- Returns spectator yaw/pitch when in free-roam mode
+- Returns null when not in spectator mode (falls back to bot.entity direction)
+
+### `updateSpectatorCameraDirection(yaw, pitch)`
+- Updates spectator direction from mouse movement in free-roam
+- Only updates if spectator position is set (i.e. in free-roam mode)
 
 ## Integration Points
 
 ### Files and Responsibilities
 
-- **`follow.ts`**: Core camera modes, position calculations, and spectator position management
+- **`interactiveControls.ts`**: Core camera modes, position calculations, spectator position/direction management, and postMessage communication
+- **`cameraRotationControls.ts`**: Mouse/gamepad camera rotation, spectator direction updates for free-roam
 - **`controls.ts`**: WASD input handling, movement calculation, and fly loop implementation
 - **`FollowerClickOverlay.tsx`**: UI overlay for taking control, handles click events and mode transitions
+- **`CameraStateOverlay.tsx`**: Always-on debug overlay showing camera mode, target, direction, and spectator position
 
 ### Event Flow
 
@@ -125,8 +142,8 @@ The system updates `worldView.updatePosition()` with the spectator camera positi
 ### Activation Methods
 
 1. **Click Overlay**: Click while in follow/birds eye mode
-2. **UI Button**: Trigger `kradle:freeRoamMode` event
-3. **Escape Birds Eye**: Release pointer lock returns to birds eye
+2. **UI Button**: `setCamera({ mode: 'freeRoam' })` via postMessage
+3. **Escape Birds Eye**: Release pointer lock reports to parent, stays in current mode
 
 ### Movement Mechanics
 

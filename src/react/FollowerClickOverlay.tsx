@@ -1,15 +1,12 @@
-import React, { useEffect, useState } from 'react'
-import { Vec3 } from 'vec3'
-import { setFollowingPlayer, setBirdsEyeFollowMode, getBirdsEyeCameraPosition, getThirdPersonCameraPosition, setSpectatorCameraPosition } from '../follow'
+import { type PointerEvent as ReactPointerEvent, type MouseEvent as ReactMouseEvent, useState } from 'react'
+import { useSnapshot } from 'valtio'
+import { cameraState, getBirdsEyeCameraPosition, getThirdPersonCameraPosition, setSpectatorCameraPosition, reportCameraState } from '../interactiveControls'
 import { pointerLock } from '../utils'
 import { toggleFly } from '../controls'
-import { appQueryParams } from '../appParams'
 
-// Helper function to focus the canvas for keyboard input
 function focusCanvas () {
   const canvas = document.getElementById('viewer-canvas') as HTMLCanvasElement
   if (canvas) {
-    // Canvas elements need tabIndex to be focusable
     if (!canvas.hasAttribute('tabindex')) {
       canvas.setAttribute('tabindex', '-1')
     }
@@ -19,180 +16,54 @@ function focusCanvas () {
   }
 }
 
+function getCameraPositionForCurrentMode (mode: string) {
+  if (mode === 'birdsEye') return getBirdsEyeCameraPosition()
+  if (mode === 'thirdPerson') return getThirdPersonCameraPosition()
+  return null
+}
+
 export default function FollowerClickOverlay () {
-  const [selectedParticipant, setSelectedParticipant] = useState<string | undefined>(undefined)
+  const camera = useSnapshot(cameraState)
   const [isHovered, setIsHovered] = useState(false)
-  const [showOverlay, setShowOverlay] = useState(false)
 
-  useEffect(() => {
-    const handler = async (data: any) => {
-      const { username } = data
-      setSelectedParticipant(username)
-      setShowOverlay(true)
-      await setFollowingPlayer(username)
+  const showOverlay = camera.mode === 'thirdPerson' || camera.mode === 'birdsEye'
 
-      // The overlay might have stolen focus when it rendered
-      // Return focus to the canvas/document
-      focusCanvas()
-    }
+  if (!showOverlay) return null
 
-    customEvents.on('kradle:followPlayer', handler)
-    return () => {
-      customEvents.off('kradle:followPlayer', handler)
-    }
-  }, [])
-
-  useEffect(() => {
-    const handler = async () => {
-      setSelectedParticipant('birdsEyeViewFollow')
-      setShowOverlay(true)
-      setBirdsEyeFollowMode()
-    }
-    customEvents.on('kradle:birdsEyeViewFollow', handler)
-    return () => {
-      customEvents.off('kradle:birdsEyeViewFollow', handler)
-    }
-  }, [])
-
-  useEffect(() => {
-    const handler = async () => {
-      // Don't allow free roam mode in playback
-      if (appQueryParams.isPlayback === 'true') return
-
-      // Go directly into free roam mode - no overlay needed
-
-      // Get current camera position (from birds eye or wherever we are)
-      const cameraPosition = getBirdsEyeCameraPosition()
-      if (cameraPosition?.position) {
-        const { position, yaw, pitch } = cameraPosition
-
-        // Set spectator camera to current view position
-        setSpectatorCameraPosition(position)
-
-        // Enable flying for spectator mode
-        toggleFly(true)
-
-        // Set the bot's view direction
-        setTimeout(() => {
-          bot.look(yaw, pitch).catch(() => {})
-        }, 50)
-      }
-
-      // Switch to first person mode and enable controls
-      void setFollowingPlayer(undefined)
-
-      // Request pointer lock for mouse capture
-      void pointerLock.requestPointerLock()
-
-      // Ensure keyboard focus is on the canvas
-      setTimeout(focusCanvas, 50)
-    }
-    customEvents.on('kradle:freeRoamMode', handler)
-    return () => {
-      customEvents.off('kradle:freeRoamMode', handler)
-    }
-  }, [])
-
-  useEffect(() => {
-    const handlePointerLockChange = () => {
-      const locked = document.pointerLockElement !== null
-
-      if (!locked) {
-        // Pointer lock released — user hit ESC, return to birds eye view
-        customEvents.emit('pointerLockReleased')
-
-        // In playback mode (non-live), don't auto-return to birdseye - let the user stay in spectator mode
-        // In live mode, always return to birds eye view
-        if (appQueryParams.isPlayback === 'true' && !appQueryParams.live) {
-          return
-        }
-
-        // Return to birds eye follow mode
-        setSelectedParticipant('birdsEyeViewFollow')
-        setShowOverlay(true)
-        setBirdsEyeFollowMode()
-      }
-    }
-
-    document.addEventListener('pointerlockchange', handlePointerLockChange)
-    return () => {
-      document.removeEventListener('pointerlockchange', handlePointerLockChange)
-    }
-  }, [])
-
-  const onPointerDownCapture = (e: React.PointerEvent) => {
+  function onPointerDownCapture (e: ReactPointerEvent) {
     e.preventDefault()
     e.stopPropagation()
     e.nativeEvent.stopImmediatePropagation?.()
   }
 
-  const onClick = async (e: React.MouseEvent) => {
+  function onClick (e: ReactMouseEvent) {
     e.preventDefault()
     e.stopPropagation()
 
-    // Don't allow taking control in playback mode
-    // if (appQueryParams.isPlayback === 'true') return
+    const cameraPosition = getCameraPositionForCurrentMode(camera.mode)
 
-    // Get camera position based on current mode
-    let cameraPosition: { position: Vec3; yaw: number; pitch: number; } | null = null
-    if (selectedParticipant === 'birdsEyeViewFollow') {
-      cameraPosition = getBirdsEyeCameraPosition()
-    } else if (selectedParticipant) {
-      // Following a specific player
-      cameraPosition = getThirdPersonCameraPosition()
-    }
-
-    // Set spectator camera position to match current camera
+    // Set spectator camera position and direction to match current camera
     if (cameraPosition?.position) {
       const { position, yaw, pitch } = cameraPosition
-
-      // Store the camera position for spectator mode
-      setSpectatorCameraPosition(position)
-
-      // Enable flying for spectator camera control
+      setSpectatorCameraPosition(position, yaw, pitch)
       toggleFly(true)
-
-      // Set the bot's view direction to match camera exactly (with small delay)
-      setTimeout(() => {
-        bot.look(yaw, pitch).catch(() => {})
-      }, 50)
     }
 
-    // Hide overlay first before requesting pointer lock
-    setShowOverlay(false)
-    setSelectedParticipant(undefined)
-
+    // Enter freeRoam via setCamera would reset spectator position,
+    // so we set it up manually above and just update state
+    window.following = bot
+    cameraState.mode = 'freeRoam'
+    cameraState.target = null
+    controMax.enabled = true
+    reportCameraState()
     void pointerLock.requestPointerLock()
 
-    // Switch to first person mode and enable controls
-    void setFollowingPlayer(undefined)
-
-    // Ensure keyboard focus is on the game after taking control
-    // This prevents spacebar from scrolling the page and ensures keyboard events are captured
     setTimeout(focusCanvas, 100)
   }
 
-  // Playback mode blocking overlay - prevents all interactions
-  // if (appQueryParams.isPlayback === 'true') {
-  //   return (
-  //     <div
-  //       style={{
-  //         position: 'absolute',
-  //         inset: 0,
-  //         zIndex: 3000, // Higher than game overlay
-  //         cursor: 'default',
-  //         pointerEvents: 'auto', // Capture all events
-  //       }}
-  //       onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); e.nativeEvent.stopImmediatePropagation?.() }}
-  //       onClick={(e) => { e.preventDefault(); e.stopPropagation(); e.nativeEvent.stopImmediatePropagation?.() }}
-  //       onContextMenu={(e) => { e.preventDefault(); e.stopPropagation() }}
-  //       onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); e.nativeEvent.stopImmediatePropagation?.() }}
-  //       onDoubleClick={(e) => { e.preventDefault(); e.stopPropagation() }}
-  //     />
-  //   )
-  // }
-
-  if (!selectedParticipant || !showOverlay) return null
+  const displayText = camera.mode === 'birdsEye'
+    ? 'You are in bird\'s eye view mode'
+    : `You are following ${camera.target}`
 
   return (
     <div
@@ -217,7 +88,7 @@ export default function FollowerClickOverlay () {
       }}
     >
       <div style={{ textAlign: 'center', color: 'white', pointerEvents: 'none', fontSize: 10 }}>
-        <div>{selectedParticipant === 'birdsEyeViewFollow' ? 'You are in bird\'s eye view mode' : `You are following ${selectedParticipant}`}</div>
+        <div>{displayText}</div>
         <div>Click to enter spectator mode and control camera</div>
       </div>
     </div>
