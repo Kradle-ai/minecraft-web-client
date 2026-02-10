@@ -1302,33 +1302,34 @@ const sendUnauthorizedMessage = (feature: 'recording' | 'camera' | 'voice') => {
   }
 }
 
-// C key to toggle camera
+// M key to cycle camera+mic: Both On → Camera Off + Mic On → Both Off
 if (appQueryParams.replayUrl) {
   window.addEventListener('keydown', (e) => {
-    if (e.code === 'KeyC' && !e.repeat && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
-      // Don't toggle if user is typing in an input
+    if (e.code === 'KeyM' && !e.repeat && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+      e.preventDefault()
       if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') return
-      // Check authorization
       if (appQueryParams.allowRecording !== 'true') {
         sendUnauthorizedMessage('camera')
         return
       }
-      void toggleCamera()
-    }
-  })
-
-  // V key to toggle voice/mic
-  window.addEventListener('keydown', (e) => {
-    if (e.code === 'KeyV' && !e.repeat && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
-      e.preventDefault()
-      // Don't toggle if user is typing in an input
-      if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') return
-      // Check authorization
-      if (appQueryParams.allowRecording !== 'true') {
-        sendUnauthorizedMessage('voice')
-        return
+      const cam = getCameraStatus()
+      const mic = getMicStatus()
+      if (!cam && !mic) {
+        // Both Off → Both On
+        void (async () => {
+          await toggleCamera()
+          await toggleMic()
+        })()
+      } else if (cam && mic) {
+        // Both On → Camera Off, Mic On
+        void toggleCamera()
+      } else {
+        // Any other state → Both Off
+        void (async () => {
+          if (cam) await toggleCamera()
+          if (mic) await toggleMic()
+        })()
       }
-      void toggleMic()
     }
   })
 
