@@ -72,7 +72,7 @@ type IFrameSendablePayload =
     feature: 'recording' | 'camera' | 'voice';
   }
 
-type ReceivableActions = 'followPlayer' | 'command' | 'reconnect' | 'setAgentSkins' | 'releasePointerLock' | 'birdsEyeViewFollow' | 'takeScreenshot' | 'setCamera' | 'freeRoamMode'
+type ReceivableActions = 'command' | 'reconnect' | 'setAgentSkins' | 'releasePointerLock' | 'takeScreenshot' | 'setCamera' | 'sendRecordingMessageList'
 
 let playerPaused = false
 

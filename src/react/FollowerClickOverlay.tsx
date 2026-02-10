@@ -1,10 +1,9 @@
-import React, { useState } from 'react'
+import { type PointerEvent as ReactPointerEvent, type MouseEvent as ReactMouseEvent, useState } from 'react'
 import { useSnapshot } from 'valtio'
 import { cameraState, getBirdsEyeCameraPosition, getThirdPersonCameraPosition, setSpectatorCameraPosition, reportCameraState } from '../interactiveControls'
 import { pointerLock } from '../utils'
 import { toggleFly } from '../controls'
 
-// Helper function to focus the canvas for keyboard input
 function focusCanvas () {
   const canvas = document.getElementById('viewer-canvas') as HTMLCanvasElement
   if (canvas) {
@@ -17,39 +16,37 @@ function focusCanvas () {
   }
 }
 
+function getCameraPositionForCurrentMode (mode: string) {
+  if (mode === 'birdsEye') return getBirdsEyeCameraPosition()
+  if (mode === 'thirdPerson') return getThirdPersonCameraPosition()
+  return null
+}
+
 export default function FollowerClickOverlay () {
   const camera = useSnapshot(cameraState)
   const [isHovered, setIsHovered] = useState(false)
 
-  // Show overlay when in thirdPerson or birdsEyeView mode
-  const showOverlay = camera.mode === 'thirdPerson' || camera.mode === 'birdsEyeView'
+  const showOverlay = camera.mode === 'thirdPerson' || camera.mode === 'birdsEye'
 
-  const onPointerDownCapture = (e: React.PointerEvent) => {
+  if (!showOverlay) return null
+
+  function onPointerDownCapture (e: ReactPointerEvent) {
     e.preventDefault()
     e.stopPropagation()
     e.nativeEvent.stopImmediatePropagation?.()
   }
 
-  const onClick = async (e: React.MouseEvent) => {
+  function onClick (e: ReactMouseEvent) {
     e.preventDefault()
     e.stopPropagation()
 
-    // Get camera position based on current mode for smooth transition
-    let cameraPosition: { position: import('vec3').Vec3; yaw: number; pitch: number } | null = null
-    if (camera.mode === 'birdsEyeView') {
-      cameraPosition = getBirdsEyeCameraPosition()
-    } else if (camera.mode === 'thirdPerson') {
-      cameraPosition = getThirdPersonCameraPosition()
-    }
+    const cameraPosition = getCameraPositionForCurrentMode(camera.mode)
 
-    // Set spectator camera position to match current camera
+    // Set spectator camera position and direction to match current camera
     if (cameraPosition?.position) {
       const { position, yaw, pitch } = cameraPosition
-      setSpectatorCameraPosition(position)
+      setSpectatorCameraPosition(position, yaw, pitch)
       toggleFly(true)
-      setTimeout(() => {
-        bot.look(yaw, pitch).catch(() => {})
-      }, 50)
     }
 
     // Enter freeRoam via setCamera would reset spectator position,
@@ -64,9 +61,7 @@ export default function FollowerClickOverlay () {
     setTimeout(focusCanvas, 100)
   }
 
-  if (!showOverlay) return null
-
-  const displayText = camera.mode === 'birdsEyeView'
+  const displayText = camera.mode === 'birdsEye'
     ? 'You are in bird\'s eye view mode'
     : `You are following ${camera.target}`
 

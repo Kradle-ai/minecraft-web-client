@@ -630,7 +630,7 @@ const mainPacketsReplayer = async (
     // Start in birds eye view mode for replays - emit event so overlay shows
     // Start in birds eye view for MCPR replays
     const { setCamera } = require('../interactiveControls')
-    setCamera({ mode: 'birdsEyeView' })
+    setCamera({ mode: 'birdsEye' })
   }
 
   // Ensure the client is in PLAY state for packet processing

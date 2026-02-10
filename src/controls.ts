@@ -8,7 +8,7 @@ import { CommandEventArgument, SchemaCommandInput } from 'contro-max/build/types
 import { stringStartsWith } from 'contro-max/build/stringUtils'
 import { GameMode } from 'mineflayer'
 import { isGameActive, showModal, gameAdditionalState, activeModalStack, hideCurrentModal, miscUiState, hideModal, hideAllModals } from './globalState'
-import { getSpectatorCameraPosition, setSpectatorCameraPosition } from './interactiveControls'
+import { getSpectatorCameraPosition, getSpectatorCameraDirection, setSpectatorCameraPosition } from './interactiveControls'
 import { appViewer } from './appViewer'
 import { goFullscreen, isInRealGameSession, pointerLock, reloadChunks } from './utils'
 import { options } from './optionsStorage'
@@ -782,8 +782,10 @@ const startFlyLoop = () => {
     // If we have a spectator camera position, move that instead of the bot
     const spectatorPos = getSpectatorCameraPosition()
     if (spectatorPos) {
-      // Calculate movement based on current yaw and pressed keys
-      const { yaw } = bot.entity
+      // Use spectator direction (independent of bot.entity which replay packets can overwrite)
+      const spectatorDir = getSpectatorCameraDirection()
+      const yaw = spectatorDir?.yaw ?? bot.entity.yaw
+      const pitch = spectatorDir?.pitch ?? bot.entity.pitch
       const movement = new Vec3(0, 0, 0)
 
       // Add movement for each pressed key
@@ -809,7 +811,7 @@ const startFlyLoop = () => {
       if (movement.x !== 0 || movement.y !== 0 || movement.z !== 0) {
         spectatorPos.add(movement)
         // Update camera to new spectator position
-        appViewer.backend?.updateCamera(spectatorPos, bot.entity.yaw, bot.entity.pitch)
+        appViewer.backend?.updateCamera(spectatorPos, yaw, pitch)
         // Update world view for chunk loading at camera position
         void appViewer.worldView?.updatePosition(spectatorPos)
       }

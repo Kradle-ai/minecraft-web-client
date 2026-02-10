@@ -5,7 +5,7 @@ import { toggleFly } from './controls'
 
 // ===== Types =====
 
-export type CameraMode = 'firstPerson' | 'thirdPerson' | 'birdsEyeView' | 'freeRoam'
+export type CameraMode = 'firstPerson' | 'thirdPerson' | 'birdsEye' | 'freeRoam'
 
 export interface CameraState {
   mode: CameraMode
@@ -84,24 +84,51 @@ export function reportCameraState () {
 // ===== Camera Position Calculations =====
 
 export function getThirdPersonCameraPosition () {
-  const targetPosition: Vec3 = following.entity.position
-
-  const { yaw } = following.entity
+  const { position: targetPosition, yaw } = following.entity
   const distance = 5
   const heightOffset = 2
 
   const dx = Math.sin(yaw) * distance
   const dz = Math.cos(yaw) * distance
 
-  const cameraPosition = targetPosition.offset(dx, heightOffset, dz)
-  const cameraYaw = yaw
-  const cameraPitch = -0.2
-
   return {
-    position: cameraPosition,
-    yaw: cameraYaw,
-    pitch: cameraPitch
+    position: targetPosition.offset(dx, heightOffset, dz),
+    yaw,
+    pitch: -0.2
   }
+}
+
+const birdsEyeExcludedNames = new Set(['KradleWebViewer', 'watcher'])
+
+function isAtDefaultOrigin (pos: Vec3 | undefined): boolean {
+  return !!pos && pos.x === 0 && pos.y === 0 && pos.z === 0
+}
+
+function isTrackedPlayer (entity: { type: string, position?: Vec3, username?: string }): boolean {
+  return entity.type === 'player'
+    && !!entity.position
+    && !!entity.username
+    && !birdsEyeExcludedNames.has(entity.username)
+    && !isAtDefaultOrigin(entity.position)
+}
+
+function getTrackedPlayerEntities (): Array<{ position: Vec3, username: string }> {
+  if (!bot) return []
+  const result: Array<{ position: Vec3, username: string }> = []
+
+  if (bot.entity?.position && !birdsEyeExcludedNames.has(bot.username || '') && !isAtDefaultOrigin(bot.entity.position)) {
+    result.push({ position: bot.entity.position, username: bot.username || 'bot' })
+  }
+  for (const entity of Object.values(bot.entities)) {
+    if (isTrackedPlayer(entity)) {
+      result.push({ position: entity.position!, username: entity.username! })
+    }
+  }
+  return result
+}
+
+export function getBirdsEyeTrackedPlayers (): string[] {
+  return getTrackedPlayerEntities().map(e => e.username)
 }
 
 export function getBirdsEyeCameraPosition () {
@@ -113,33 +140,16 @@ export function getBirdsEyeCameraPosition () {
     }
   }
 
-  const players: Vec3[] = []
-  const excludedNames = new Set(['KradleWebViewer', 'watcher'])
-
-  const isAtDefaultOrigin = (pos: Vec3 | undefined) => pos && pos.x === 0 && pos.y === 0 && pos.z === 0
-
-  if (bot.entity?.position && !excludedNames.has(bot.username || '') && !isAtDefaultOrigin(bot.entity.position)) {
-    players.push(bot.entity.position)
-  }
-
-  for (const entity of Object.values(bot.entities)) {
-    if (entity.type === 'player' && entity.position && entity.username) {
-      if (!excludedNames.has(entity.username) && !isAtDefaultOrigin(entity.position)) {
-        players.push(entity.position)
-      }
-    }
-  }
+  const players = getTrackedPlayerEntities().map(e => e.position)
 
   if (players.length === 0) {
     if (lastValidBirdsEyePosition) {
       return lastValidBirdsEyePosition
     }
 
-    const fallbackY = bot.entity?.position?.y || 70
-    const fallbackX = bot.entity?.position?.x || 0
-    const fallbackZ = bot.entity?.position?.z || 0
+    const pos = bot.entity?.position
     const result = {
-      position: new Vec3(fallbackX, fallbackY + 12, fallbackZ + 12),
+      position: new Vec3(pos?.x || 0, (pos?.y || 70) + 12, (pos?.z || 0) + 12),
       yaw: 0,
       pitch: -Math.PI / 4
     }
@@ -197,7 +207,9 @@ export function updateCameraForCurrentMode () {
     if (!bot.entity) return
     const spectatorPos = getSpectatorCameraPosition()
     if (bot.physics.gravity === 0 && spectatorPos) {
-      const { yaw, pitch } = bot.entity
+      const spectatorDir = getSpectatorCameraDirection()
+      const yaw = spectatorDir?.yaw ?? bot.entity.yaw
+      const pitch = spectatorDir?.pitch ?? bot.entity.pitch
       appViewer.backend?.updateCamera(spectatorPos, yaw, pitch)
     } else {
       const { position, yaw, pitch } = bot.entity
@@ -226,8 +238,8 @@ function handleMovement () {
     return
   }
 
-  // birdsEyeView: calculate dynamic overhead position
-  if (cameraState.mode === 'birdsEyeView') {
+  // birdsEye: calculate dynamic overhead position
+  if (cameraState.mode === 'birdsEye') {
     const { position, yaw, pitch } = getBirdsEyeCameraPosition()
     appViewer.backend?.updateCamera(position, yaw, pitch)
     void appViewer.worldView?.updatePosition(position)
@@ -237,11 +249,8 @@ function handleMovement () {
   // firstPerson: bot's own view
   if (cameraState.mode === 'firstPerson' || following === bot) {
     if (!bot.entity) return
-    const isAtDefaultOrigin = bot.entity.position.x === 0 &&
-      bot.entity.position.y === 0 &&
-      bot.entity.position.z === 0
     updateCameraForCurrentMode()
-    if (!isAtDefaultOrigin) {
+    if (!isAtDefaultOrigin(bot.entity.position)) {
       void appViewer.worldView?.updatePosition(bot.entity.position)
     }
     return
@@ -330,13 +339,13 @@ export function setCamera (config: { mode: CameraMode, target?: string }) {
       break
     }
 
-    case 'birdsEyeView': {
+    case 'birdsEye': {
       // Clear spectator position
       setSpectatorCameraPosition(null)
       // Set bot as default following (camera ignores it)
       window.following = bot
       followingUsername = null
-      cameraState.mode = 'birdsEyeView'
+      cameraState.mode = 'birdsEye'
       cameraState.target = null
       // Disable keyboard control
       controMax.enabled = false
@@ -348,20 +357,18 @@ export function setCamera (config: { mode: CameraMode, target?: string }) {
     }
 
     case 'freeRoam': {
-      // Get camera position from current mode to start from
-      let startPos = getBirdsEyeCameraPosition()
-      if (previousMode === 'thirdPerson' && following?.entity?.position) {
-        startPos = getThirdPersonCameraPosition()
+      // If spectator position is already set (e.g. from overlay click), keep it
+      if (!getSpectatorCameraPosition()) {
+        let startPos = getBirdsEyeCameraPosition()
+        if (previousMode === 'thirdPerson' && following?.entity?.position) {
+          startPos = getThirdPersonCameraPosition()
+        }
+        if (startPos?.position) {
+          setSpectatorCameraPosition(startPos.position, startPos.yaw, startPos.pitch)
+        }
       }
 
-      if (startPos?.position) {
-        setSpectatorCameraPosition(startPos.position)
-        toggleFly(true)
-        setTimeout(() => {
-          bot.look(startPos.yaw, startPos.pitch).catch(() => {})
-        }, 50)
-      }
-
+      toggleFly(true)
       window.following = bot
       followingUsername = null
       cameraState.mode = 'freeRoam'
@@ -473,6 +480,7 @@ export function trackCameraMovement () {
   })
 
   handleMovement()
+  reportCameraState()
 }
 
 // Listen for postMessage commands from parent
@@ -482,22 +490,6 @@ function setupPostMessageListener () {
     if (mode) {
       setCamera({ mode, target })
     }
-  })
-
-  // Legacy event handlers for backward compatibility
-  customEvents.on('kradle:followPlayer', (data: any) => {
-    const { username } = data
-    if (username) {
-      setCamera({ mode: 'thirdPerson', target: username })
-    }
-  })
-
-  customEvents.on('kradle:birdsEyeViewFollow', () => {
-    setCamera({ mode: 'birdsEyeView' })
-  })
-
-  customEvents.on('kradle:freeRoamMode', () => {
-    setCamera({ mode: 'freeRoam' })
   })
 
   // Pointer lock release: just report to parent, no mode change

@@ -1,23 +1,42 @@
 import { useEffect, useState } from 'react'
 import { useSnapshot } from 'valtio'
-import { cameraState, getSpectatorCameraPosition } from '../interactiveControls'
+import { cameraState, getSpectatorCameraPosition, getSpectatorCameraDirection, getBirdsEyeTrackedPlayers } from '../interactiveControls'
+
+function formatDirection (): string {
+  const specDir = getSpectatorCameraDirection()
+  if (specDir) {
+    return `${specDir.yaw.toFixed(2)} / ${specDir.pitch.toFixed(2)}`
+  }
+  if (bot?.entity) {
+    return `${bot.entity.yaw.toFixed(2)} / ${bot.entity.pitch.toFixed(2)}`
+  }
+  return '-'
+}
+
+function formatSpectatorPos (): string | null {
+  const pos = getSpectatorCameraPosition()
+  if (!pos) return null
+  return `${pos.x.toFixed(1)} / ${pos.y.toFixed(1)} / ${pos.z.toFixed(1)}`
+}
+
+function getFollowingDisplay (mode: string, trackedPlayers: string[]): string {
+  if (mode === 'birdsEye') {
+    return trackedPlayers.length > 0 ? trackedPlayers.join(', ') : 'none'
+  }
+  return window.following?.username ?? '-'
+}
 
 export default function CameraStateOverlay () {
   const camera = useSnapshot(cameraState)
   const [spectatorPos, setSpectatorPos] = useState<string | null>(null)
-  const [botDir, setBotDir] = useState<string>('-')
+  const [direction, setDirection] = useState<string>('-')
+  const [trackedPlayers, setTrackedPlayers] = useState<string[]>([])
 
   useEffect(() => {
     const interval = setInterval(() => {
-      const specPos = getSpectatorCameraPosition()
-      if (specPos) {
-        setSpectatorPos(`${specPos.x.toFixed(1)} / ${specPos.y.toFixed(1)} / ${specPos.z.toFixed(1)}`)
-      } else {
-        setSpectatorPos(null)
-      }
-      if (bot?.entity) {
-        setBotDir(`${bot.entity.yaw.toFixed(2)} / ${bot.entity.pitch.toFixed(2)}`)
-      }
+      setSpectatorPos(formatSpectatorPos())
+      setDirection(formatDirection())
+      setTrackedPlayers(getBirdsEyeTrackedPlayers())
     }, 200)
     return () => clearInterval(interval)
   }, [])
@@ -38,8 +57,8 @@ export default function CameraStateOverlay () {
       userSelect: 'none',
     }}>
       <div>cam: {camera.mode}{camera.target ? ` (${camera.target})` : ''}</div>
-      <div>following: {window.following?.username ?? '-'}</div>
-      <div>dir: {botDir}</div>
+      <div>following: {getFollowingDisplay(camera.mode, trackedPlayers)}</div>
+      <div>dir: {direction}</div>
       {spectatorPos && <div>spec: {spectatorPos}</div>}
     </div>
   )

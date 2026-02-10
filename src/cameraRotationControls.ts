@@ -4,6 +4,7 @@ import { options } from './optionsStorage'
 import { hideNotification, notificationProxy } from './react/NotificationProvider'
 import { pointerLock } from './utils'
 import { updateMotion, initMotionTracking } from './react/uiMotion'
+import { getSpectatorCameraPosition, getSpectatorCameraDirection, updateSpectatorCameraDirection } from './interactiveControls'
 
 let lastMouseMove: number
 
@@ -33,23 +34,27 @@ export function onCameraMove (e: MouseEvent | CameraMoveEvent) {
 }
 
 
-const moveCameraRawHandler = ({ x, y }: { x: number; y: number }) => {
+function moveCameraRawHandler ({ x, y }: { x: number; y: number }) {
   const maxPitch = 0.5 * Math.PI
   const minPitch = -0.5 * Math.PI
 
   appViewer.lastCamUpdate = Date.now()
 
-  // if (viewer.world.freeFlyMode) {
-  //   // Update freeFlyState directly
-  //   viewer.world.freeFlyState.yaw = (viewer.world.freeFlyState.yaw - x) % (2 * Math.PI)
-  //   viewer.world.freeFlyState.pitch = Math.max(minPitch, Math.min(maxPitch, viewer.world.freeFlyState.pitch - y))
-  //   return
-  // }
-
   if (!bot?.entity) return
-  const pitch = bot.entity.pitch - y
-  void bot.look(bot.entity.yaw - x, Math.max(minPitch, Math.min(maxPitch, pitch)), true)
-  appViewer.backend?.updateCamera(null, bot.entity.yaw, pitch)
+
+  // In freeRoam, update spectator direction independently of bot.entity
+  const spectatorDir = getSpectatorCameraDirection()
+  if (getSpectatorCameraPosition() && spectatorDir) {
+    const newYaw = spectatorDir.yaw - x
+    const newPitch = Math.max(minPitch, Math.min(maxPitch, spectatorDir.pitch - y))
+    updateSpectatorCameraDirection(newYaw, newPitch)
+    appViewer.backend?.updateCamera(null, newYaw, newPitch)
+    return
+  }
+
+  const newPitch = Math.max(minPitch, Math.min(maxPitch, bot.entity.pitch - y))
+  void bot.look(bot.entity.yaw - x, newPitch, true)
+  appViewer.backend?.updateCamera(null, bot.entity.yaw, newPitch)
 }
 
 window.addEventListener('mousemove', (e: MouseEvent) => {
