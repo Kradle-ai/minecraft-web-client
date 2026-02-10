@@ -60,9 +60,11 @@ const pillStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: 10,
-  background: 'rgba(0, 0, 0, 0.7)',
-  padding: '6px 14px',
-  borderRadius: 6,
+  background: 'rgba(0, 0, 0, 0.5)',
+  backdropFilter: 'blur(12px)',
+  border: '1px solid rgba(255, 255, 255, 0.1)',
+  padding: '6px 12px',
+  borderRadius: 9999,
 }
 
 export default function InteractiveControlsHint () {
