@@ -4,9 +4,9 @@ import type { MessageFormatPart } from './chatUtils'
 import { appQueryParams } from './appParams'
 
 
-// Check if canvas chat is enabled (defaults to true, can be disabled with ?chat=false)
+// Check if canvas chat is enabled (defaults to false, can be enabled with ?chat=true)
 export function isChatCanvasEnabled (): boolean {
-  return appQueryParams.chat !== 'false'
+  return appQueryParams.chat === 'true'
 }
 
 // Rendering constants
