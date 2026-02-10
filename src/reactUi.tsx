@@ -145,7 +145,7 @@ const InGameUi = () => {
 
   return <>
     <RobustPortal to={document.querySelector('#ui-root')}>
-      <CameraStateOverlay />
+      {/* <CameraStateOverlay /> */}
       {/* apply scaling */}
       <div style={{ display: showUI ? 'block' : 'none' }}>
         <PerComponentErrorBoundary>

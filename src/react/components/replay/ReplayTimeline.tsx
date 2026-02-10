@@ -64,47 +64,48 @@ export default function ReplayTimeline () {
     return result
   }, [markerCount])
 
-  // Deduplicate clustered markers: ensure minimum spacing, rotate through senders
-  const displayMarkers = useMemo(() => {
+  // Group markers into clusters (within 3 seconds of each other)
+  interface MarkerCluster {
+    positionMs: number // average time of the cluster
+    markers: ChatMarker[]
+  }
+  const clusters = useMemo((): MarkerCluster[] => {
     if (markerCount === 0 || state.totalDurationMs === 0) return []
-    const minGapPct = 0.008 // minimum 0.8% gap between displayed markers
     const sorted = [...chatMarkers].sort((a, b) => a.timeMs - b.timeMs)
-    const result: ChatMarker[] = []
-    let lastPct = -Infinity
-    const recentSenders: string[] = []
-    for (const marker of sorted) {
-      const pct = marker.timeMs / state.totalDurationMs
-      if (pct - lastPct < minGapPct) {
-        if (recentSenders.includes(marker.sender)) continue
+    const result: MarkerCluster[] = []
+    let current: ChatMarker[] = [sorted[0]]
+    let clusterStart = sorted[0].timeMs
+    for (let i = 1; i < sorted.length; i++) {
+      if (sorted[i].timeMs - clusterStart <= 5000) {
+        current.push(sorted[i])
       } else {
-        recentSenders.length = 0
-      }
-      result.push(marker)
-      lastPct = pct
-      recentSenders.push(marker.sender)
-      if (recentSenders.length > uniqueSenders.length) {
-        recentSenders.shift()
+        const avg = current.reduce((sum, m) => sum + m.timeMs, 0) / current.length
+        result.push({ positionMs: avg, markers: current })
+        current = [sorted[i]]
+        clusterStart = sorted[i].timeMs
       }
     }
+    const avg = current.reduce((sum, m) => sum + m.timeMs, 0) / current.length
+    result.push({ positionMs: avg, markers: current })
     return result
-  }, [markerCount, state.totalDurationMs, uniqueSenders.length])
+  }, [markerCount, state.totalDurationMs])
 
-  // Find the chat marker closest to the hover position
-  const hoveredMarker = useMemo(() => {
-    if (hoverProgress === null || state.totalDurationMs === 0 || markerCount === 0) return null
+  // Find the cluster closest to the hover position
+  const hoveredCluster = useMemo((): MarkerCluster | null => {
+    if (hoverProgress === null || state.totalDurationMs === 0 || clusters.length === 0) return null
     const hoverMs = hoverProgress * state.totalDurationMs
-    const thresholdMs = state.totalDurationMs * 0.008 // ~0.8% of timeline
-    let closest: ChatMarker | null = null
+    const thresholdMs = state.totalDurationMs * 0.01
+    let closest: MarkerCluster | null = null
     let closestDist = Infinity
-    for (const marker of chatMarkers) {
-      const dist = Math.abs(marker.timeMs - hoverMs)
+    for (const cluster of clusters) {
+      const dist = Math.abs(cluster.positionMs - hoverMs)
       if (dist < thresholdMs && dist < closestDist) {
         closestDist = dist
-        closest = marker
+        closest = cluster
       }
     }
     return closest
-  }, [hoverProgress, markerCount, state.totalDurationMs])
+  }, [hoverProgress, clusters, state.totalDurationMs])
 
   const showControls = useCallback(() => {
     setIsVisible(true)
@@ -279,26 +280,52 @@ export default function ReplayTimeline () {
           }}
         />
 
-        {/* Chat markers — float above the bar on hover */}
-        {(isBarHovered || isDragging) && displayMarkers.map((marker, i) => {
-          const pos = state.totalDurationMs > 0 ? (marker.timeMs / state.totalDurationMs) * 100 : 0
-          const color = getPlayerColor(marker.sender, uniqueSenders)
+        {/* Chat marker clusters — stacked dots above the bar on hover */}
+        {(isBarHovered || isDragging) && clusters.map((cluster, ci) => {
+          const pos = state.totalDurationMs > 0 ? (cluster.positionMs / state.totalDurationMs) * 100 : 0
+          // Deduplicate senders within the cluster for stacking
+          const seen = new Set<string>()
+          const uniqueInCluster: ChatMarker[] = []
+          for (const m of cluster.markers) {
+            if (!seen.has(m.sender)) {
+              seen.add(m.sender)
+              uniqueInCluster.push(m)
+            }
+          }
           return (
             <div
-              key={i}
+              key={ci}
               style={{
                 position: 'absolute',
                 left: `${pos}%`,
                 bottom: 16,
                 transform: 'translateX(-50%)',
-                width: 12,
-                height: 12,
-                borderRadius: '50%',
-                background: color,
-                border: '1.5px solid rgba(255, 255, 255, 0.5)',
+                display: 'flex',
+                flexDirection: 'column-reverse',
+                alignItems: 'center',
+                gap: 2,
                 pointerEvents: 'none',
+                background: 'rgba(0, 0, 0, 0.4)',
+                backdropFilter: 'blur(8px)',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                borderRadius: 8,
+                padding: 3,
               }}
-            />
+            >
+              {uniqueInCluster.map((marker, mi) => (
+                <div
+                  key={mi}
+                  style={{
+                    width: 12,
+                    height: 12,
+                    borderRadius: '50%',
+                    background: getPlayerColor(marker.sender, uniqueSenders),
+                    border: '1.5px solid rgba(255, 255, 255, 0.5)',
+                    flexShrink: 0,
+                  }}
+                />
+              ))}
+            </div>
           )
         })}
 
@@ -318,7 +345,7 @@ export default function ReplayTimeline () {
           />
         )}
 
-        {/* Hover tooltip — time + chat message if near a marker */}
+        {/* Hover tooltip — time + all chat messages from hovered cluster */}
         {hoverProgress !== null && (
           <div
             style={{
@@ -333,29 +360,51 @@ export default function ReplayTimeline () {
               pointerEvents: 'none',
             }}
           >
-            {hoveredMarker && (
-              <div
-                style={{
-                  padding: '4px 10px',
-                  background: 'rgba(0, 0, 0, 0.8)',
-                  backdropFilter: 'blur(8px)',
-                  color: '#fff',
-                  fontSize: '14px',
-                  borderRadius: '6px',
-                  border: '1px solid rgba(255, 255, 255, 0.1)',
-                  whiteSpace: 'nowrap',
-                  maxWidth: 300,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                }}
-              >
-                <span style={{ color: getPlayerColor(hoveredMarker.sender, uniqueSenders), fontWeight: 600 }}>
-                  {hoveredMarker.sender}
-                </span>
-                {' '}
-                <span style={{ color: 'rgba(255,255,255,0.7)' }}>{hoveredMarker.message}</span>
-              </div>
-            )}
+            {hoveredCluster && (() => {
+              // Show only the first message per sender in the cluster
+              const seenSenders = new Set<string>()
+              const deduped: ChatMarker[] = []
+              for (const m of hoveredCluster.markers) {
+                if (!seenSenders.has(m.sender)) {
+                  seenSenders.add(m.sender)
+                  deduped.push(m)
+                }
+              }
+              return (
+                <div
+                  style={{
+                    padding: '6px 10px',
+                    background: 'rgba(0, 0, 0, 0.8)',
+                    backdropFilter: 'blur(8px)',
+                    color: '#fff',
+                    fontSize: '14px',
+                    borderRadius: '6px',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    maxWidth: 350,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 3,
+                  }}
+                >
+                  {deduped.map((marker, mi) => (
+                    <div
+                      key={mi}
+                      style={{
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
+                      <span style={{ color: getPlayerColor(marker.sender, uniqueSenders), fontWeight: 600 }}>
+                        {marker.sender}
+                      </span>
+                      {' '}
+                      <span style={{ color: 'rgba(255,255,255,0.7)' }}>{marker.message}</span>
+                    </div>
+                  ))}
+                </div>
+              )
+            })()}
             <div
               style={{
                 padding: '3px 8px',
