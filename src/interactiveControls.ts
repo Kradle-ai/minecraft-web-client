@@ -384,52 +384,51 @@ export function setCamera (config: { mode: CameraMode, target?: string }) {
   reportCameraState()
 }
 
-async function doFollowPlayer (username: string) {
-  let target = bot.players[username]
+// Wait for a condition to become truthy, checking on bot events. Resolves immediately if already true.
+async function waitFor<T> (check: () => T | null | undefined, events: string[], timeoutMs: number): Promise<T | null> {
+  return new Promise((resolve) => {
+    const result = check()
+    if (result) { resolve(result); return }
 
-  if (!target) {
-    // Retry every 2 seconds for up to 30 seconds
-    const maxRetries = 15
-    let retryCount = 0
+    const timer = setTimeout(() => { cleanup(); resolve(check() ?? null) }, timeoutMs)
 
-    const retryFollow = () => {
-      if (retryCount >= maxRetries) {
-        console.error(`[InteractiveControls] Failed to follow player '${username}' after ${maxRetries} retries`)
-        sendMessageToParent({ action: 'followingPlayerLost' })
-        return
-      }
-
-      if (bot.players[username]) {
-        console.log(`[InteractiveControls] Player ${username} found after ${retryCount} retries`)
-        void doFollowPlayer(username)
-      } else {
-        retryCount++
-        setTimeout(retryFollow, 2000)
-      }
+    const listener = () => {
+      const result = check()
+      if (result) { cleanup(); resolve(result) }
     }
 
-    setTimeout(retryFollow, 2000)
+    const cleanup = () => {
+      clearTimeout(timer)
+      for (const ev of events) (bot as any).removeListener(ev, listener)
+    }
+
+    for (const ev of events) (bot as any).on(ev, listener)
+  })
+}
+
+async function doFollowPlayer (username: string) {
+  // Wait for player to appear in bot.players (resolves instantly if already present)
+  const target = await waitFor(
+    () => {
+      const p = bot.players[username]
+      return p?.entity?.position ? p : null
+    },
+    ['entitySpawn', 'entityUpdate', 'entityMoved', 'playerUpdated'],
+    30_000
+  )
+
+  if (!target?.entity?.position) {
+    console.error(`[InteractiveControls] Failed to follow player '${username}' - player or entity not found after 30s`)
+    sendMessageToParent({ action: 'followingPlayerLost' })
     return
   }
 
-  // Wait for entity position if needed
-  if (!target?.entity?.position) {
-    await new Promise(resolve => { setTimeout(resolve, 1000) })
-    target = bot.players[username]
-  }
-
-  if (!target?.entity?.position) {
-    await new Promise(resolve => { setTimeout(resolve, 1000) })
-    target = bot.players[username]
-  }
-
-  if (!target?.entity?.position) {
-    console.error(`[InteractiveControls] Failed to follow player '${username}' - could not find entity position`)
-    return
-  }
-
+  console.log(`[InteractiveControls] Now following player ${username}`)
   window.following = target
   followingUsername = username
+  // Immediately update camera position so it doesn't wait for the next bot event
+  updateCameraForCurrentMode()
+  void appViewer.worldView?.updatePosition(following.entity.position)
   reportCameraState()
 }
 
