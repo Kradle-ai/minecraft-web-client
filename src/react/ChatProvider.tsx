@@ -62,12 +62,16 @@ export function clearKradleverseChat () {
 }
 
 // Player chat translate keys (format: "<player> message" or "* player message")
+// Includes both legacy translation keys and raw chat registry decoration formats (1.20.4+)
 const PLAYER_CHAT_TRANSLATE_KEYS = new Set([
   'chat.type.text', // <player> message
   'chat.type.emote', // * player message
   'chat.type.announcement', // [player] message (broadcasts)
   'chat.type.team.text', // team chat
   'chat.type.team.sent', // team chat sent
+  '<%s> %s', // 1.20.4+ raw chat registry format for player chat
+  '* %s %s', // 1.20.4+ raw chat registry format for emote
+  '[%s] %s', // 1.20.4+ raw chat registry format for announcement
 ])
 
 // System message translate key prefixes to exclude from canvas rendering
@@ -135,7 +139,6 @@ export default () => {
       if (jsonMsg['unsigned']) {
         jsonMsg = jsonMsg['unsigned']
       }
-      console.log('JTMC!! jsonMsg', jsonMsg)
       const parts = formatMessage(jsonMsg)
 
       // Skip chat messages during fast-forward to prevent duplicates
