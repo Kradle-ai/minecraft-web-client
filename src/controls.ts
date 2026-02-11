@@ -1355,7 +1355,7 @@ if (appQueryParams.replayUrl) {
   })
 }
 
-const MAX_RECORDING_SECONDS = 60
+const MAX_RECORDING_SECONDS = 30
 
 const updateRecordingTime = () => {
   const elapsed = Math.floor((Date.now() - recordingState.startTime) / 1000)
