@@ -1033,57 +1033,177 @@ export const recordingState: {
   micSourceNode: null
 }
 
+const createMediaIcon = (type: 'camera' | 'mic', active: boolean) => {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+  svg.setAttribute('width', '14')
+  svg.setAttribute('height', '14')
+  svg.setAttribute('viewBox', '0 0 24 24')
+  svg.setAttribute('fill', 'none')
+  svg.setAttribute('stroke', active ? '#fff' : 'rgba(255,255,255,0.3)')
+  svg.setAttribute('stroke-width', '2')
+  svg.setAttribute('stroke-linecap', 'round')
+  svg.setAttribute('stroke-linejoin', 'round')
+  svg.style.flexShrink = '0'
+  svg.dataset.mediaIcon = type
+
+  if (type === 'camera') {
+    svg.innerHTML = active
+      ? '<path d="M15 2H9a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2z"/><path d="m17 9 5-3v12l-5-3"/>'
+      : '<path d="M15 2H9a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2z"/><path d="m17 9 5-3v12l-5-3"/><line x1="2" y1="2" x2="22" y2="22" stroke="rgba(255,100,100,0.7)" stroke-width="2"/>'
+  } else {
+    svg.innerHTML = active
+      ? '<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/>'
+      : '<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="2" x2="22" y2="22" stroke="rgba(255,100,100,0.7)" stroke-width="2"/>'
+  }
+
+  return svg
+}
+
+const updateMediaIcons = () => {
+  const indicator = document.getElementById('recording-indicator')
+  if (!indicator) return
+  const camIcon = indicator.querySelector('[data-media-icon="camera"]')
+  const micIcon = indicator.querySelector('[data-media-icon="mic"]')
+  if (camIcon) {
+    const active = getCameraStatus()
+    const newIcon = createMediaIcon('camera', active)
+    camIcon.replaceWith(newIcon)
+  }
+  if (micIcon) {
+    const active = getMicStatus()
+    const newIcon = createMediaIcon('mic', active)
+    micIcon.replaceWith(newIcon)
+  }
+}
+
 const createRecordingIndicator = () => {
   const indicator = document.createElement('div')
   indicator.id = 'recording-indicator'
   indicator.style.cssText = `
     position: fixed;
-    top: 20px;
-    right: 20px;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
     display: flex;
     align-items: center;
     gap: 10px;
-    background: rgba(0, 0, 0, 0.7);
-    color: white;
-    padding: 10px 15px;
-    border-radius: 8px;
-    font-family: monospace;
-    font-size: 16px;
+    background: rgba(15, 0, 0, 0.75);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1.5px solid rgba(255, 60, 60, 0.7);
+    box-shadow: 0 0 20px 2px rgba(255, 40, 40, 0.15), inset 0 0 12px rgba(255, 40, 40, 0.06);
+    color: #fff;
+    padding: 7px 16px;
+    border-radius: 9999px;
+    font-family: system-ui, -apple-system, sans-serif;
+    font-size: 13px;
+    line-height: 18px;
     z-index: 10000;
     pointer-events: none;
+    white-space: nowrap;
   `
 
+  // --- REC section ---
   const redCircle = document.createElement('div')
   redCircle.style.cssText = `
     width: 12px;
     height: 12px;
-    background: red;
+    background: #ff3b3b;
     border-radius: 50%;
-    animation: pulse 1.5s ease-in-out infinite;
+    box-shadow: 0 0 10px 3px rgba(255, 59, 59, 0.8), 0 0 24px 6px rgba(255, 59, 59, 0.35);
+    animation: recording-pulse 1.4s ease-in-out infinite;
+    flex-shrink: 0;
   `
 
   const text = document.createElement('span')
-  text.textContent = 'Recording'
-  text.style.fontWeight = 'bold'
+  text.textContent = 'REC'
+  text.style.cssText = `
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #ff6b6b;
+    text-shadow: 0 0 8px rgba(255, 60, 60, 0.5);
+  `
 
   const time = document.createElement('span')
   time.id = 'recording-time'
   time.textContent = '0:00'
-  time.style.marginLeft = '5px'
+  time.style.cssText = `
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: #fff;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
+  `
+
+  // --- Separator ---
+  const sep = document.createElement('div')
+  sep.style.cssText = `
+    width: 1px;
+    height: 16px;
+    background: rgba(255, 255, 255, 0.2);
+    flex-shrink: 0;
+  `
+
+  // --- Media status icons ---
+  const camIcon = createMediaIcon('camera', getCameraStatus())
+  const micIcon = createMediaIcon('mic', getMicStatus())
+
+  // --- M key badge + label ---
+  const mKey = document.createElement('span')
+  mKey.style.cssText = `
+    display: inline-flex;
+    align-items: center;
+    border-radius: 4px;
+    border: 1px solid rgba(156, 163, 175, 0.4);
+    background: rgba(0, 0, 0, 0.35);
+    padding: 2px 5px;
+    color: #fff;
+    font-weight: 600;
+    font-size: 10px;
+    line-height: 1;
+  `
+  mKey.textContent = 'M'
+
+  const mLabel = document.createElement('span')
+  mLabel.textContent = 'Media'
+  mLabel.style.cssText = `
+    font-weight: 500;
+    font-size: 10px;
+    letter-spacing: 0.025em;
+    color: rgba(255, 255, 255, 0.6);
+  `
 
   indicator.appendChild(redCircle)
   indicator.appendChild(text)
   indicator.appendChild(time)
+  indicator.appendChild(sep)
+  indicator.appendChild(camIcon)
+  indicator.appendChild(micIcon)
+  indicator.appendChild(mKey)
+  indicator.appendChild(mLabel)
+
+  // Listen for media state changes to update icons live
+  const onRecordingUpdate = () => updateMediaIcons()
+  customEvents.on('recordingUpdate', onRecordingUpdate)
+  indicator.dataset.cleanupKey = 'true'
+  const origRemove = indicator.remove.bind(indicator)
+  indicator.remove = () => {
+    customEvents.removeListener('recordingUpdate', onRecordingUpdate)
+    origRemove()
+  }
 
   // Add CSS animation for pulsing effect
-  const style = document.createElement('style')
-  style.textContent = `
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.3; }
-    }
-  `
-  document.head.appendChild(style)
+  if (!document.getElementById('recording-pulse-style')) {
+    const style = document.createElement('style')
+    style.id = 'recording-pulse-style'
+    style.textContent = `
+      @keyframes recording-pulse {
+        0%, 100% { opacity: 1; transform: scale(1); box-shadow: 0 0 10px 3px rgba(255, 59, 59, 0.8), 0 0 24px 6px rgba(255, 59, 59, 0.35); }
+        50% { opacity: 0.6; transform: scale(0.8); box-shadow: 0 0 6px 2px rgba(255, 59, 59, 0.5), 0 0 14px 3px rgba(255, 59, 59, 0.2); }
+      }
+    `
+    document.head.appendChild(style)
+  }
 
   return indicator
 }
@@ -1355,7 +1475,7 @@ if (appQueryParams.replayUrl) {
   })
 }
 
-const MAX_RECORDING_SECONDS = 60
+const MAX_RECORDING_SECONDS = 30
 
 const updateRecordingTime = () => {
   const elapsed = Math.floor((Date.now() - recordingState.startTime) / 1000)
