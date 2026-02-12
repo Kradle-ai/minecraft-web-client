@@ -139,17 +139,20 @@ export function getBirdsEyeTrackedPlayers (): string[] {
   return getTrackedPlayerEntities().map(e => e.username)
 }
 
-// Track all player usernames ever seen (persists across entity loss)
-const allKnownPlayers = new Set<string>()
+// Track all player usernames ever seen with unavailability reason
+export type PlayerUnavailableReason = 'died' | 'disconnected' | null
 
-export function getTrackedPlayersWithStatus (): Array<{ username: string, available: boolean }> {
+const knownPlayerStatus = new Map<string, PlayerUnavailableReason>()
+
+export function getTrackedPlayersWithStatus (): Array<{ username: string, available: boolean, reason: PlayerUnavailableReason }> {
   const activePlayers = new Set(getBirdsEyeTrackedPlayers())
   for (const name of activePlayers) {
-    allKnownPlayers.add(name)
+    knownPlayerStatus.set(name, null)
   }
-  return [...allKnownPlayers].map(username => ({
+  return [...knownPlayerStatus.keys()].map(username => ({
     username,
-    available: activePlayers.has(username)
+    available: activePlayers.has(username),
+    reason: activePlayers.has(username) ? null : knownPlayerStatus.get(username) ?? null
   }))
 }
 
@@ -494,7 +497,19 @@ export function trackCameraMovement () {
     checkEntityForFollowRecovery(entity)
     handleMovement()
   })
-  bot.on('entityGone', () => handleMovement())
+  bot.on('entityGone', (entity: any) => {
+    // Track reason: if player is still in bot.players, they died/despawned; otherwise disconnected
+    if (entity.type === 'player' && entity.username && knownPlayerStatus.has(entity.username)) {
+      const stillOnServer = !!bot.players[entity.username]
+      knownPlayerStatus.set(entity.username, stillOnServer ? 'died' : 'disconnected')
+    }
+    handleMovement()
+  })
+  bot.on('playerLeft', (player: any) => {
+    if (player.username && knownPlayerStatus.has(player.username)) {
+      knownPlayerStatus.set(player.username, 'disconnected')
+    }
+  })
   bot.on('entityMoved', () => handleMovement())
   bot.on('entityUpdate', (entity) => {
     checkEntityForFollowRecovery(entity)

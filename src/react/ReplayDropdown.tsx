@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSnapshot } from 'valtio'
-import { cameraState, setCamera, getTrackedPlayersWithStatus } from '../interactiveControls'
+import { cameraState, setCamera, getTrackedPlayersWithStatus, type PlayerUnavailableReason } from '../interactiveControls'
 import { appQueryParams } from '../appParams'
 
 const font = 'system-ui, -apple-system, sans-serif'
@@ -107,7 +107,7 @@ export default function ReplayDropdown () {
   const isReplay = useIsReplay()
   const camera = useSnapshot(cameraState)
   const [open, setOpen] = useState(false)
-  const [players, setPlayers] = useState<Array<{ username: string, available: boolean }>>([])
+  const [players, setPlayers] = useState<Array<{ username: string, available: boolean, reason: PlayerUnavailableReason }>>([])
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -229,11 +229,12 @@ export default function ReplayDropdown () {
                   margin: '6px 8px',
                 }} />
                 <SectionLabel>Follow Agent</SectionLabel>
-                {players.map(({ username, available }) => (
+                {players.map(({ username, available, reason }) => (
                   <MenuItem
                     key={username}
                     icon={<span style={{ fontSize: 14, lineHeight: 1 }}>🤖</span>}
                     label={username}
+                    sublabel={!available && reason ? reason : undefined}
                     active={camera.mode === 'thirdPerson' && camera.target === username}
                     disabled={!available}
                     onClick={() => handleFollowPlayer(username)}
