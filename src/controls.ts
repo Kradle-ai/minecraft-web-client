@@ -7,6 +7,7 @@ import { ControMax } from 'contro-max/build/controMax'
 import { CommandEventArgument, SchemaCommandInput } from 'contro-max/build/types'
 import { stringStartsWith } from 'contro-max/build/stringUtils'
 import { GameMode } from 'mineflayer'
+import watermarkSrc from '../assets/kradleverse/kv.png'
 import { isGameActive, showModal, gameAdditionalState, activeModalStack, hideCurrentModal, miscUiState, hideModal, hideAllModals } from './globalState'
 import { getSpectatorCameraPosition, getSpectatorCameraDirection, setSpectatorCameraPosition, reportCameraState } from './interactiveControls'
 import { appViewer } from './appViewer'
@@ -1002,6 +1003,8 @@ const RECORDING_HEIGHT = 1080
 const WEBCAM_SIZE = 200
 const WEBCAM_PADDING = 36
 const WEBCAM_BORDER_RADIUS = 16
+const WATERMARK_WIDTH = 300
+const WATERMARK_PADDING = 24
 
 export const recordingState: {
   mediaRecorder: MediaRecorder | null
@@ -1724,6 +1727,18 @@ const startCanvasRecording = async () => {
     recordingState.recordingCanvas = recordingCanvas
     recordingState.recordingCtx = ctx
 
+    // Pre-load watermark image for compositing
+    // Pre-load watermark image for compositing
+    const watermarkImg = new Image()
+    let watermarkReady = false
+    let watermarkHeight = 0
+    watermarkImg.onload = () => {
+      watermarkHeight = Math.round(WATERMARK_WIDTH * (watermarkImg.naturalHeight / watermarkImg.naturalWidth))
+      watermarkReady = true
+    }
+    watermarkImg.src = watermarkSrc
+    if (watermarkImg.complete) watermarkImg.onload(null as any)
+
     // Compositing loop - draws game canvas and webcam to recording canvas
     // Uses webcamPreviewElement directly for camera hot-plugging support
     const drawFrame = () => {
@@ -1776,6 +1791,11 @@ const startCanvasRecording = async () => {
 
         // Restore context state
         ctx.restore()
+      }
+
+      // Draw watermark in top-left corner
+      if (watermarkReady) {
+        ctx.drawImage(watermarkImg, WATERMARK_PADDING, WATERMARK_PADDING, WATERMARK_WIDTH, watermarkHeight)
       }
 
       recordingState.animationFrameId = requestAnimationFrame(drawFrame)
