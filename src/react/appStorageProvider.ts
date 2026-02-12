@@ -39,6 +39,7 @@ type StorageData = {
   serversHistory: ServerHistoryEntry[]
   authenticatedAccounts: AuthenticatedAccount[]
   serversList: StoreServerItem[] | undefined
+  hideControlsWelcome: boolean | undefined
 }
 
 const oldKeysAliases: Partial<Record<keyof StorageData, string>> = {
@@ -79,6 +80,7 @@ const defaultStorageData: StorageData = {
   serversHistory: [],
   authenticatedAccounts: [],
   serversList: undefined,
+  hideControlsWelcome: undefined,
 }
 
 export const setStorageDataOnAppConfigLoad = () => {
