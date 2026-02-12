@@ -32,11 +32,11 @@ export default () => {
       const progressMax = night - morningEnd
       int = progressNorm / progressMax
     }
-    // todo need to think wisely how to set these values & also move directional light around!
-    const colorInt = Math.max(int, 0.4) // @pranaygp - changed min 0.1 to 0.4 to keep nighttime more visible
+    // Sky color is dark at night so stars are visible, but mesh lighting stays bright
+    const colorInt = Math.max(int, 0.1)
     updateBackground({ r: dayColor.r * colorInt, g: dayColor.g * colorInt, b: dayColor.b * colorInt })
     if (!options.newVersionsLighting && bot.supportFeature?.('blockStateId')) {
-      appViewer.playerState.reactive.ambientLight = Math.max(int, 0.25)
+      appViewer.playerState.reactive.ambientLight = Math.max(int, 0.5)
       appViewer.playerState.reactive.directionalLight = Math.min(int, 0.5)
     }
   }
