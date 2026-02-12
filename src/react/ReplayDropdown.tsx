@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSnapshot } from 'valtio'
-import { cameraState, setCamera, getBirdsEyeTrackedPlayers } from '../interactiveControls'
+import { cameraState, setCamera, getTrackedPlayersWithStatus } from '../interactiveControls'
 import { appQueryParams } from '../appParams'
 
 const font = 'system-ui, -apple-system, sans-serif'
@@ -57,33 +57,35 @@ const SectionLabel = ({ children }: { children: string }) => (
   </div>
 )
 
-const MenuItem = ({ icon, label, sublabel, active, onClick }: {
+const MenuItem = ({ icon, label, sublabel, active, disabled, onClick }: {
   icon: React.ReactNode
   label: string
   sublabel?: string
   active?: boolean
+  disabled?: boolean
   onClick: () => void
 }) => {
   const [hovered, setHovered] = useState(false)
 
   return (
     <button
-      onClick={onClick}
+      onClick={disabled ? undefined : onClick}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
         width: '100%',
         textAlign: 'left',
         padding: '8px 12px',
-        background: hovered ? 'rgba(255,255,255,0.1)' : 'transparent',
+        background: !disabled && hovered ? 'rgba(255,255,255,0.1)' : 'transparent',
         border: 'none',
         display: 'flex',
         alignItems: 'center',
         gap: 10,
-        cursor: 'pointer',
-        color: active ? accentColor : '#fff',
+        cursor: disabled ? 'default' : 'pointer',
+        color: disabled ? 'rgba(255, 255, 255, 0.3)' : active ? accentColor : '#fff',
         fontFamily: font,
         fontSize: 12,
+        opacity: disabled ? 0.5 : 1,
       }}
     >
       {icon}
@@ -105,12 +107,12 @@ export default function ReplayDropdown () {
   const isReplay = useIsReplay()
   const camera = useSnapshot(cameraState)
   const [open, setOpen] = useState(false)
-  const [players, setPlayers] = useState<string[]>([])
+  const [players, setPlayers] = useState<Array<{ username: string, available: boolean }>>([])
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!isReplay) return
-    const update = () => setPlayers(getBirdsEyeTrackedPlayers())
+    const update = () => setPlayers(getTrackedPlayersWithStatus())
     update()
     const interval = setInterval(update, 1000)
     return () => clearInterval(interval)
@@ -227,12 +229,13 @@ export default function ReplayDropdown () {
                   margin: '6px 8px',
                 }} />
                 <SectionLabel>Follow Agent</SectionLabel>
-                {players.map(username => (
+                {players.map(({ username, available }) => (
                   <MenuItem
                     key={username}
                     icon={<span style={{ fontSize: 14, lineHeight: 1 }}>🤖</span>}
                     label={username}
                     active={camera.mode === 'thirdPerson' && camera.target === username}
+                    disabled={!available}
                     onClick={() => handleFollowPlayer(username)}
                   />
                 ))}

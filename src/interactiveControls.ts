@@ -139,6 +139,20 @@ export function getBirdsEyeTrackedPlayers (): string[] {
   return getTrackedPlayerEntities().map(e => e.username)
 }
 
+// Track all player usernames ever seen (persists across entity loss)
+const allKnownPlayers = new Set<string>()
+
+export function getTrackedPlayersWithStatus (): Array<{ username: string, available: boolean }> {
+  const activePlayers = new Set(getBirdsEyeTrackedPlayers())
+  for (const name of activePlayers) {
+    allKnownPlayers.add(name)
+  }
+  return [...allKnownPlayers].map(username => ({
+    username,
+    available: activePlayers.has(username)
+  }))
+}
+
 export function getBirdsEyeCameraPosition () {
   if (!bot) {
     return lastValidBirdsEyePosition || {
