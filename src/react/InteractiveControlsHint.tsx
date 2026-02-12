@@ -5,6 +5,12 @@ import { appStorage } from './appStorageProvider'
 import WelcomeControlsCard from './WelcomeControlsCard'
 import { keyStyle, rowStyle, labelStyle, separatorStyle, pillStyle, hintFontFamily } from './controlHintStyles'
 
+// Allows external code to skip the welcome popup for the next pointer lock
+let skipWelcomeOnce = false
+export function suppressNextWelcome () {
+  skipWelcomeOnce = true
+}
+
 export default function InteractiveControlsHint () {
   const [hasPointerLock, setHasPointerLock] = useState(false)
   const [isVisible, setIsVisible] = useState(false)
@@ -54,7 +60,9 @@ export default function InteractiveControlsHint () {
         const freeRoam = cameraState.mode === 'freeRoam'
         setIsFreeRoam(freeRoam)
 
-        if (!appStorage.hideControlsWelcome && !dismissedThisSessionRef.current) {
+        if (skipWelcomeOnce) {
+          skipWelcomeOnce = false
+        } else if (!appStorage.hideControlsWelcome && !dismissedThisSessionRef.current) {
           welcomeActiveRef.current = true
           fadeStartedRef.current = false
           setShowWelcome(true)

@@ -59,6 +59,7 @@ import TouchInteractionHint from './react/TouchInteractionHint'
 import { ua } from './react/utils'
 import AudioControls from './react/AudioControls'
 import FollowerClickOverlay from './react/FollowerClickOverlay'
+import ReplayDropdown from './react/ReplayDropdown'
 import { appQueryParams } from './appParams'
 
 const isFirefox = ua.getBrowser().name === 'Firefox'
@@ -188,6 +189,7 @@ const InGameUi = () => {
       {/* because of z-index */}
       {showUI && <TouchControls />}
       <GlobalSearchInput />
+      <ReplayDropdown />
     </RobustPortal>
   </>
 }

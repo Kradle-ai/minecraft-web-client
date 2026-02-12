@@ -283,9 +283,9 @@ function handleMovement () {
       }
     }
 
-    // Entity lost - report to parent and do nothing
-    console.log('[InteractiveControls] Followed entity lost:', usernameToRecover)
+    // Entity lost - switch to birdsEye
     sendMessageToParent({ action: 'followingPlayerLost' })
+    setCamera({ mode: 'birdsEye' })
     return
   }
 
@@ -428,6 +428,7 @@ async function doFollowPlayer (username: string) {
   if (!target?.entity?.position) {
     console.error(`[InteractiveControls] Failed to follow player '${username}' - player or entity not found after 30s`)
     sendMessageToParent({ action: 'followingPlayerLost' })
+    setCamera({ mode: 'birdsEye' })
     return
   }
 
@@ -462,9 +463,9 @@ export async function reestablishFollowing () {
       console.log('[InteractiveControls] Entity not yet loaded for', followingUsername, ', waiting for spawn')
     }
   } else {
-    console.log('[InteractiveControls] Player not found for', followingUsername, ', clearing follow state')
-    followingUsername = null
+    console.log('[InteractiveControls] Player not found for', followingUsername)
     sendMessageToParent({ action: 'followingPlayerLost' })
+    setCamera({ mode: 'birdsEye' })
   }
 }
 
