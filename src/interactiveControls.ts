@@ -139,6 +139,23 @@ export function getBirdsEyeTrackedPlayers (): string[] {
   return getTrackedPlayerEntities().map(e => e.username)
 }
 
+// Track all player usernames ever seen with unavailability reason
+export type PlayerUnavailableReason = 'died' | 'disconnected' | null
+
+const knownPlayerStatus = new Map<string, PlayerUnavailableReason>()
+
+export function getTrackedPlayersWithStatus (): Array<{ username: string, available: boolean, reason: PlayerUnavailableReason }> {
+  const activePlayers = new Set(getBirdsEyeTrackedPlayers())
+  for (const name of activePlayers) {
+    knownPlayerStatus.set(name, null)
+  }
+  return [...knownPlayerStatus.keys()].map(username => ({
+    username,
+    available: activePlayers.has(username),
+    reason: activePlayers.has(username) ? null : knownPlayerStatus.get(username) ?? null
+  }))
+}
+
 export function getBirdsEyeCameraPosition () {
   if (!bot) {
     return lastValidBirdsEyePosition || {
@@ -283,9 +300,9 @@ function handleMovement () {
       }
     }
 
-    // Entity lost - report to parent and do nothing
-    console.log('[InteractiveControls] Followed entity lost:', usernameToRecover)
+    // Entity lost - switch to birdsEye
     sendMessageToParent({ action: 'followingPlayerLost' })
+    setCamera({ mode: 'birdsEye' })
     return
   }
 
@@ -428,6 +445,7 @@ async function doFollowPlayer (username: string) {
   if (!target?.entity?.position) {
     console.error(`[InteractiveControls] Failed to follow player '${username}' - player or entity not found after 30s`)
     sendMessageToParent({ action: 'followingPlayerLost' })
+    setCamera({ mode: 'birdsEye' })
     return
   }
 
@@ -462,9 +480,9 @@ export async function reestablishFollowing () {
       console.log('[InteractiveControls] Entity not yet loaded for', followingUsername, ', waiting for spawn')
     }
   } else {
-    console.log('[InteractiveControls] Player not found for', followingUsername, ', clearing follow state')
-    followingUsername = null
+    console.log('[InteractiveControls] Player not found for', followingUsername)
     sendMessageToParent({ action: 'followingPlayerLost' })
+    setCamera({ mode: 'birdsEye' })
   }
 }
 
@@ -479,7 +497,19 @@ export function trackCameraMovement () {
     checkEntityForFollowRecovery(entity)
     handleMovement()
   })
-  bot.on('entityGone', () => handleMovement())
+  bot.on('entityGone', (entity: any) => {
+    // Track reason: if player is still in bot.players, they died/despawned; otherwise disconnected
+    if (entity.type === 'player' && entity.username && knownPlayerStatus.has(entity.username)) {
+      const stillOnServer = !!bot.players[entity.username]
+      knownPlayerStatus.set(entity.username, stillOnServer ? 'died' : 'disconnected')
+    }
+    handleMovement()
+  })
+  bot.on('playerLeft', (player: any) => {
+    if (player.username && knownPlayerStatus.has(player.username)) {
+      knownPlayerStatus.set(player.username, 'disconnected')
+    }
+  })
   bot.on('entityMoved', () => handleMovement())
   bot.on('entityUpdate', (entity) => {
     checkEntityForFollowRecovery(entity)

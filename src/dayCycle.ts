@@ -3,21 +3,21 @@ import { assertDefined } from './utils'
 import { updateBackground } from './water'
 
 export default () => {
-  const timeUpdated = () => {
-    // 0 morning
-    const dayTotal = 24_000
-    const evening = 11_500
-    const night = 13_500
-    const morningStart = 23_000
-    const morningEnd = 23_961
-    const timeProgress = options.dayCycleAndLighting ? bot.time.timeOfDay : 0
+  const evening = 11_500
+  const night = 13_500
+  const morningStart = 23_000
+  const morningEnd = 23_961
 
-    // todo check actual colors
-    const dayColorRainy = { r: 111 / 255, g: 156 / 255, b: 236 / 255 }
-    // todo yes, we should make animations (and rain)
-    // eslint-disable-next-line unicorn/numeric-separators-style
-    const dayColor = bot.isRaining ? dayColorRainy : { r: 0.6784313725490196, g: 0.8470588235294118, b: 0.9019607843137255 } // lightblue
-    // let newColor = dayColor
+  // eslint-disable-next-line unicorn/numeric-separators-style
+  const dayColorDefault = { r: 0.6784313725490196, g: 0.8470588235294118, b: 0.9019607843137255 } // lightblue
+  const dayColorRainy = { r: 111 / 255, g: 156 / 255, b: 236 / 255 }
+
+  let targetInt = 1
+  let currentInt = 1
+  const lerpSpeed = 0.02
+
+  const getTargetInt = () => {
+    const timeProgress = options.dayCycleAndLighting ? bot.time.timeOfDay : 0
     let int = 1
     if (timeProgress < evening) {
       // stay dayily
@@ -32,15 +32,31 @@ export default () => {
       const progressMax = night - morningEnd
       int = progressNorm / progressMax
     }
-    // todo need to think wisely how to set these values & also move directional light around!
-    const colorInt = Math.max(int, 0.4) // @pranaygp - changed min 0.1 to 0.4 to keep nighttime more visible
+    return int
+  }
+
+  const applyLighting = () => {
+    const dayColor = bot.isRaining ? dayColorRainy : dayColorDefault
+    // Sky is black at night so stars are visible, but mesh lighting stays bright
+    const colorInt = currentInt
     updateBackground({ r: dayColor.r * colorInt, g: dayColor.g * colorInt, b: dayColor.b * colorInt })
     if (!options.newVersionsLighting && bot.supportFeature?.('blockStateId')) {
-      appViewer.playerState.reactive.ambientLight = Math.max(int, 0.25)
-      appViewer.playerState.reactive.directionalLight = Math.min(int, 0.5)
+      appViewer.playerState.reactive.ambientLight = Math.max(currentInt, 0.6)
+      appViewer.playerState.reactive.directionalLight = Math.min(currentInt, 0.5)
     }
   }
 
-  bot.on('time', timeUpdated)
-  timeUpdated()
+  bot.on('time', () => {
+    targetInt = getTargetInt()
+  })
+
+  targetInt = getTargetInt()
+  applyLighting()
+
+  beforeRenderFrame.push(() => {
+    if (Math.abs(currentInt - targetInt) > 0.001) {
+      currentInt += (targetInt - currentInt) * lerpSpeed
+      applyLighting()
+    }
+  })
 }
