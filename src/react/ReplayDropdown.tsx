@@ -82,7 +82,7 @@ const MenuItem = ({ icon, label, sublabel, active, disabled, onClick }: {
         alignItems: 'center',
         gap: 10,
         cursor: disabled ? 'default' : 'pointer',
-        color: disabled ? 'rgba(255, 255, 255, 0.3)' : active ? accentColor : '#fff',
+        color: disabled ? 'rgba(255, 255, 255, 0.9)' : active ? accentColor : '#fff',
         fontFamily: font,
         fontSize: 12,
         opacity: disabled ? 0.5 : 1,

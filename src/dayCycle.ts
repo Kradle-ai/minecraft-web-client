@@ -32,11 +32,11 @@ export default () => {
       const progressMax = night - morningEnd
       int = progressNorm / progressMax
     }
-    // Sky color is dark at night so stars are visible, but mesh lighting stays bright
-    const colorInt = Math.max(int, 0.1)
+    // Sky is black at night so stars are visible, but mesh lighting stays bright
+    const colorInt = int
     updateBackground({ r: dayColor.r * colorInt, g: dayColor.g * colorInt, b: dayColor.b * colorInt })
     if (!options.newVersionsLighting && bot.supportFeature?.('blockStateId')) {
-      appViewer.playerState.reactive.ambientLight = Math.max(int, 0.5)
+      appViewer.playerState.reactive.ambientLight = Math.max(int, 0.6)
       appViewer.playerState.reactive.directionalLight = Math.min(int, 0.5)
     }
   }
