@@ -202,11 +202,26 @@ export class WorldRendererThree extends WorldRendererCommon {
   }
 
   timeUpdated (newTime: number): void {
+    const evening = 11_500
     const nightTime = 13_500
     const morningStart = 23_000
-    const displayStars = newTime > nightTime && newTime < morningStart
-    if (displayStars) {
+    const morningEnd = 23_961
+
+    let fade = 0
+    if (newTime > evening && newTime <= nightTime) {
+      // Fade in during evening
+      fade = (newTime - evening) / (nightTime - evening)
+    } else if (newTime > nightTime && newTime < morningStart) {
+      // Full brightness at night
+      fade = 1
+    } else if (newTime >= morningStart && newTime < morningEnd) {
+      // Fade out during morning
+      fade = 1 - (newTime - morningStart) / (morningEnd - morningStart)
+    }
+
+    if (fade > 0) {
       this.starField.addToScene()
+      this.starField.setFade(fade)
     } else {
       this.starField.remove()
     }
@@ -1094,7 +1109,7 @@ class StarField {
     const depth = 50
     const count = 7000
     const factor = 7
-    const saturation = 10
+    const saturation = 0.1
     const speed = 0.2
 
     const geometry = new THREE.BufferGeometry()
@@ -1110,7 +1125,7 @@ class StarField {
     for (let i = 0; i < count; i++) {
       r -= increment * Math.random()
       positions.push(...genStar(r).toArray())
-      color.setHSL(i / count, saturation, 0.9)
+      color.setHSL(i / count, saturation, 0.3)
       colors.push(color.r, color.g, color.b)
     }
 
@@ -1126,6 +1141,7 @@ class StarField {
 
     // Create points and add them to the scene
     this.points = new THREE.Points(geometry, material)
+    this.points.frustumCulled = false
     this.scene.add(this.points)
 
     const clock = new THREE.Clock()
@@ -1134,6 +1150,12 @@ class StarField {
       material.uniforms.time.value = clock.getElapsedTime() * speed
     }
     this.points.renderOrder = -1
+  }
+
+  setFade (value: number) {
+    if (!this.points) return
+    const material = this.points.material as StarfieldMaterial
+    material.uniforms.fade.value = value
   }
 
   remove () {
@@ -1153,23 +1175,27 @@ class StarfieldMaterial extends THREE.ShaderMaterial {
     super({
       uniforms: { time: { value: 0 }, fade: { value: 1 } },
       vertexShader: /* glsl */ `
+                #include <common>
+                #include <logdepthbuf_pars_vertex>
                 uniform float time;
                 attribute float size;
                 varying vec3 vColor;
                 attribute vec3 color;
                 void main() {
                 vColor = color;
-                vec4 mvPosition = modelViewMatrix * vec4(position, 0.5);
+                vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
                 gl_PointSize = 0.7 * size * (30.0 / -mvPosition.z) * (3.0 + sin(time + 100.0));
                 gl_Position = projectionMatrix * mvPosition;
+                #include <logdepthbuf_vertex>
             }`,
       fragmentShader: /* glsl */ `
-                uniform sampler2D pointTexture;
+                #include <common>
+                #include <logdepthbuf_pars_fragment>
                 uniform float fade;
                 varying vec3 vColor;
                 void main() {
-                float opacity = 1.0;
-                gl_FragColor = vec4(vColor, 1.0);
+                #include <logdepthbuf_fragment>
+                gl_FragColor = vec4(vColor * fade, fade);
 
                 #include <tonemapping_fragment>
                 #include <${version >= 154 ? 'colorspace_fragment' : 'encodings_fragment'}>
