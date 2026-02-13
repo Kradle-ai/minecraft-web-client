@@ -90,17 +90,30 @@ export default function InteractiveControlsHint () {
     }
 
     const handleInput = (e: Event) => {
-      if (!document.pointerLockElement) return
-      // H key opens welcome card (only in freeRoam)
-      if (e instanceof KeyboardEvent && e.code === 'KeyH' && !e.repeat && cameraState.mode === 'freeRoam') {
+      if (!(e instanceof KeyboardEvent) || e.code !== 'KeyH' || e.repeat) {
+        if (document.pointerLockElement) startFadeTimer()
+        return
+      }
+
+      // H key toggles welcome card (only in freeRoam)
+      if (cameraState.mode !== 'freeRoam') return
+
+      if (welcomeActiveRef.current) {
+        // Card is showing — dismiss it
+        welcomeActiveRef.current = false
+        dismissedThisSessionRef.current = true
+        setShowWelcome(false)
+        setTimeout(() => {
+          void pointerLock.requestPointerLock()
+        }, 50)
+      } else if (document.pointerLockElement) {
+        // Card is not showing — open it
         welcomeActiveRef.current = true
         setIsFreeRoam(true)
         setShowWelcome(true)
         setHasPointerLock(false)
         document.exitPointerLock?.()
-        return
       }
-      startFadeTimer()
     }
 
     document.addEventListener('pointerlockchange', handlePointerLockChange)
