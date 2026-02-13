@@ -97,7 +97,7 @@ export const contro = new ControMax({
   defaultControlOptions: controlOptions,
   target: document,
   captureEvents () {
-    return true
+    return !!document.pointerLockElement
   },
   storeProvider: {
     load: () => customKeymaps,
@@ -226,13 +226,18 @@ const secondActionCommands = {
   }
 }
 
-// detect pause open, as ANY keyup event is not fired when you exit pointer lock (esc)
-subscribe(activeModalStack, () => {
-  if (activeModalStack.length) {
-    // iterate over pressedKeys
-    for (const key of contro.pressedKeys) {
-      contro.pressedKeyOrButtonChanged({ code: key }, false)
-    }
+// When pointer lock is released (e.g. ESC), the browser does NOT fire keyup/mouseup
+// events for keys/buttons that are still physically held. Clear all input state to
+// prevent stuck movement, block breaking, etc.
+document.addEventListener('pointerlockchange', () => {
+  if (document.pointerLockElement) return
+  for (const key of contro.pressedKeys) {
+    contro.pressedKeyOrButtonChanged({ code: key }, false)
+  }
+  // Mouse buttons are handled by separate DOM listeners (not contro commands),
+  // so dispatch synthetic mouseup events to ensure bot.leftClickEnd/rightClickEnd fire
+  for (const button of [0, 2]) {
+    document.dispatchEvent(new MouseEvent('mouseup', { button }))
   }
 })
 
