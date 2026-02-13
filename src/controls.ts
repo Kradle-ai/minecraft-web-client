@@ -97,7 +97,7 @@ export const contro = new ControMax({
   defaultControlOptions: controlOptions,
   target: document,
   captureEvents () {
-    return true
+    return !!document.pointerLockElement
   },
   storeProvider: {
     load: () => customKeymaps,
