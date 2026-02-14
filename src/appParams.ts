@@ -53,6 +53,7 @@ export type AppQsParams = {
   replayStopOnError?: string
   replaySkipMissingOnTimeout?: string
   replayPacketsSenderDelay?: string
+  timeMs?: string
   kradleverse?: boolean
   live?: string
   allowRecording?: string
