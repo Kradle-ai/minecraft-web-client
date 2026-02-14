@@ -103,6 +103,13 @@ export function startLocalReplayServer (contentsOrPackets: string | ParsedReplay
     packetsReplayState.seekTargetMs = 25_000
   }
 
+  if (appQueryParams.timeMs) {
+    const timeMs = parseInt(appQueryParams.timeMs, 10)
+    if (!isNaN(timeMs) && timeMs >= 0) {
+      packetsReplayState.seekTargetMs = timeMs
+    }
+  }
+
   if (!packetsReplayState.replayName || packetsReplayState.replayName === '') {
     const sizeEstimate = typeof contentsOrPackets === 'string' ? contentsOrPackets.length : packets.length * 100
     packetsReplayState.replayName = `local ${getFixedFilesize(sizeEstimate)}`
