@@ -1,42 +1,13 @@
 import { Entity } from 'prismarine-entity'
 import { versionToNumber } from 'renderer/viewer/common/utils'
-import tracker from '@nxg-org/mineflayer-tracker'
 import { getThreeJsRendererMethods } from 'renderer/viewer/three/threeJsMethods'
 
 customEvents.on('gameLoaded', () => {
-  bot.loadPlugin(tracker)
-
-  const playerPerAnimation = {} as Record<string, string>
   const entityData = (e: Entity) => {
     if (!e.username) return
     window.debugEntityMetadata ??= {}
     window.debugEntityMetadata[e.username] = e
-    if (e.type === 'player') {
-      bot.tracker.trackEntity(e)
-    }
   }
-
-  let lastCall = 0
-  bot.on('physicsTick', () => {
-    // throttle, tps: 6
-    if (Date.now() - lastCall < 166) return
-    lastCall = Date.now()
-    for (const [id, { tracking, info }] of Object.entries(bot.tracker.trackingData)) {
-      if (!tracking) continue
-      const e = bot.entities[id]
-      if (!e) continue
-      const speed = info.avgSpeed
-      const WALKING_SPEED = 0.03
-      const SPRINTING_SPEED = 0.18
-      const isWalking = Math.abs(speed.x) > WALKING_SPEED || Math.abs(speed.z) > WALKING_SPEED
-      const isSprinting = Math.abs(speed.x) > SPRINTING_SPEED || Math.abs(speed.z) > SPRINTING_SPEED
-      const newAnimation = isWalking ? (isSprinting ? 'running' : 'walking') : 'idle'
-      if (newAnimation !== playerPerAnimation[id]) {
-        getThreeJsRendererMethods()?.playEntityAnimation(e.id, newAnimation)
-        playerPerAnimation[id] = newAnimation
-      }
-    }
-  })
 
   bot.on('entitySwingArm', (e) => {
     getThreeJsRendererMethods()?.playEntityAnimation(e.id, 'oneSwing')
@@ -55,16 +26,7 @@ customEvents.on('gameLoaded', () => {
     }
   })
 
-  bot.on('entityGone', (entity) => {
-    bot.tracker.stopTrackingEntity(entity, true)
-  })
-
   bot.on('entityMoved', (e) => {
-    entityData(e)
-  })
-  bot._client.on('entity_velocity', (packet) => {
-    const e = bot.entities[packet.entityId]
-    if (!e) return
     entityData(e)
   })
 
