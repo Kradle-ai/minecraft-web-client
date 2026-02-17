@@ -305,11 +305,9 @@ export class Entities {
         const prev = this.lastEntityPositions[entityId]
         const pos = entity.position
         if (prev && dt > 0) {
-          console.log('pos', pos)
           const speed = Math.max(Math.abs(pos.x - prev.x), Math.abs(pos.z - prev.z)) / dt
           const isWalking = speed > WALKING_SPEED
           const isSprinting = speed > SPRINTING_SPEED
-          console.log('speed', speed, isWalking, isSprinting)
           const newAnimation = isWalking ? (isSprinting ? 'running' : 'walking') : 'idle'
           if (newAnimation !== this.entityAnimationStates[entityId]) {
             playerObject.animation.isMoving = newAnimation !== 'idle'

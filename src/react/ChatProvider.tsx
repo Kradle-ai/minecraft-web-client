@@ -15,11 +15,15 @@ import { updateLoadedServerData } from './serversStorage'
 import { lastConnectOptions } from './AppStatusProvider'
 import { packetsReplayState } from './state/packetsReplayState'
 
+export type ChatMessageType = 'chat' | 'death' | 'join' | 'leave' | 'teleport' | 'title' | 'subtitle' | 'announcement' | 'kradle_command'
+
 // Track all chat messages for kradleverse mode
-const allChatMessages: Array<{ parts: Array<{ text: string; color?: string; bold?: boolean; italic?: boolean }>; id: number }> = []
+const allChatMessages: Array<{ parts: Array<{ text: string; color?: string; bold?: boolean; italic?: boolean }>; id: number; type: ChatMessageType }> = []
 
 // Track seen message content hashes to prevent duplicates
 const seenMessageHashes = new Set<string>()
+
+let nextMessageId = 0
 
 // Flag to skip chat during fast-forward (module-level for synchronous access)
 let skipChatMessages = false
@@ -28,12 +32,10 @@ export function setSkipChatMessages (skip: boolean) {
   skipChatMessages = skip
 }
 
-// Generate a hash from message parts for deduplication
 function getMessageHash (parts: any[]): string {
   return parts.map(p => p.text || '').join('|')
 }
 
-// Sanitize message parts to only include serializable properties
 function sanitizeParts (parts: any[]): Array<{ text: string; color?: string; bold?: boolean; italic?: boolean }> {
   return parts.map(part => ({
     text: part.text || '',
@@ -53,72 +55,76 @@ function sendChatToParent () {
   }
 }
 
+export function sendMessageToParent (parts: any[], type: ChatMessageType) {
+  const text = parts.map(p => p.text || '').join('')
+  console.log(`[chat:${type}]`, text)
+  if (!appQueryParams.kradleverse || window === window.parent) return
+  if (skipChatMessages) return
+  const hash = `${type}|${getMessageHash(parts)}`
+  if (seenMessageHashes.has(hash)) return
+  seenMessageHashes.add(hash)
+  nextMessageId++
+  allChatMessages.push({ parts: sanitizeParts(parts), id: nextMessageId, type })
+  sendChatToParent()
+}
+
 // Synchronous clear function that can be called directly before fast-forwarding
 export function clearKradleverseChat () {
   allChatMessages.length = 0
   seenMessageHashes.clear()
+  nextMessageId = 0
   clearCanvasChatMessages()
   sendChatToParent()
 }
 
-// Player chat translate keys (format: "<player> message" or "* player message")
-// Includes both legacy translation keys and raw chat registry decoration formats (1.20.4+)
 const PLAYER_CHAT_TRANSLATE_KEYS = new Set([
-  'chat.type.text', // <player> message
-  'chat.type.emote', // * player message
-  'chat.type.announcement', // [player] message (broadcasts)
-  'chat.type.team.text', // team chat
-  'chat.type.team.sent', // team chat sent
-  '<%s> %s', // 1.20.4+ raw chat registry format for player chat
-  '* %s %s', // 1.20.4+ raw chat registry format for emote
-  '[%s] %s', // 1.20.4+ raw chat registry format for announcement
+  'chat.type.text',
+  'chat.type.emote',
+  'chat.type.announcement',
+  'chat.type.team.text',
+  'chat.type.team.sent',
+  '<%s> %s',
+  '* %s %s',
+  '[%s] %s',
 ])
 
-// System message translate key prefixes to exclude from canvas rendering
-const EXCLUDED_TRANSLATE_PREFIXES = [
-  'chat.type.advancement', // advancement messages
-  'death.', // death messages
-  'multiplayer.player.joined', // player joined
-  'multiplayer.player.left', // player left
-]
-
-// Check if message text starts with [ (bracketed messages to filter out)
-function startsWithBracket (parts: Array<{ text: string }>): boolean {
+function classifyMessage (jsonMsg: any, parts: Array<{ text: string }>): ChatMessageType | null {
+  const translate: string | undefined = jsonMsg?.translate ?? jsonMsg?.json?.translate
   const fullText = parts.map(p => p.text || '').join('').trim()
-  return fullText.startsWith('[')
-}
 
-// Check if message text starts with "Teleported " (teleport confirmations to filter out)
-function startsWithTeleported (parts: Array<{ text: string }>): boolean {
-  const fullText = parts.map(p => p.text || '').join('').trim()
-  return fullText.startsWith('Teleported ')
-}
-
-function isPlayerChatMessage (jsonMsg: any): boolean {
-  const translate = jsonMsg?.translate || jsonMsg?.json?.translate
-
-  // Exclude system messages by prefix
   if (translate) {
-    for (const prefix of EXCLUDED_TRANSLATE_PREFIXES) {
-      if (translate.startsWith(prefix)) {
-        return false
-      }
+    if (translate.startsWith('death.')) return 'death'
+    if (translate.startsWith('multiplayer.player.joined')) {
+      return parts[0]?.text?.toLowerCase() === 'watcher' ? null : 'join'
     }
+    if (translate.startsWith('multiplayer.player.left')) return 'leave'
+    if (translate.startsWith('chat.type.advancement')) return null
+    if (PLAYER_CHAT_TRANSLATE_KEYS.has(translate)) return 'chat'
+    // Server admin command feedback — exclude silently
+    if (translate.startsWith('commands.')) return null
   }
 
-  if (translate && PLAYER_CHAT_TRANSLATE_KEYS.has(translate)) {
-    return true
+  // Player chat without translate: player names have suggest_command clickEvent
+  if (jsonMsg?.with && Array.isArray(jsonMsg.with) && jsonMsg.with[0]?.clickEvent?.action === 'suggest_command') {
+    // [PlayerName: command result] — bracket-wrapped command feedback, not player chat
+    if (fullText.startsWith('[')) return null
+    return 'chat'
   }
-  // Also check if message has 'with' array containing player info (common pattern)
-  // Messages without translate but with text and clickEvent for player name are likely player chat
-  if (jsonMsg?.with && Array.isArray(jsonMsg.with) && jsonMsg.with.length >= 2) {
-    const firstWith = jsonMsg.with[0]
-    // Player names often have clickEvent with suggest_command
-    if (firstWith?.clickEvent?.action === 'suggest_command') {
-      return true
-    }
+
+  if (fullText.startsWith('Teleported ')) return 'teleport'
+  if (fullText.startsWith('***KRADLE***')) return 'announcement'
+
+  // Structured kradle_command JSON embedded in chat
+  if (fullText.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(fullText)
+      if (parsed?.type === 'kradle_command') return 'kradle_command'
+    } catch { }
   }
-  return false
+
+  // Unclassified — log for investigation
+  console.log('[chat:unclassified]', { translate, fullText, jsonMsg })
+  return null
 }
 
 
@@ -135,45 +141,30 @@ export default () => {
 
   useEffect(() => {
     bot.addListener('message', (jsonMsg, position) => {
-      if (position === 'game_info') return // ignore action bar messages, they are handled by the TitleProvider
+      if (position === 'game_info') return // action bar — handled by TitleProvider
       if (jsonMsg['unsigned']) {
         jsonMsg = jsonMsg['unsigned']
       }
       const parts = formatMessage(jsonMsg)
 
-      // Skip chat messages during fast-forward to prevent duplicates
-      if (skipChatMessages) {
-        return
-      }
+      if (skipChatMessages) return
 
-      // Only show player chat messages on canvas (not system messages)
-      // Also filter out messages starting with [ (system/watcher messages) or "Teleported " (teleport confirmations)
-      const isPlayerChat = isPlayerChatMessage(jsonMsg) && !startsWithBracket(parts) && !startsWithTeleported(parts)
-      if (isChatCanvasEnabled() && isPlayerChat) {
+      const type = classifyMessage(jsonMsg, parts)
+
+      if (isChatCanvasEnabled() && type === 'chat') {
         addCanvasChatMessage(parts)
       }
 
       setMessages(m => {
         lastMessageId.current++
-        const newMessage: Message = {
-          parts,
-          id: lastMessageId.current,
-          faded: false,
-        }
+        const newMessage: Message = { parts, id: lastMessageId.current, faded: false }
         fadeMessage(newMessage, true, () => {
           // eslint-disable-next-line max-nested-callbacks
           setMessages(m => [...m])
         })
 
-        // Track and send chat to parent in kradleverse mode (only player chat messages)
-        if (isPlayerChat) {
-          const hash = getMessageHash(parts)
-          // Skip duplicate messages
-          if (!seenMessageHashes.has(hash)) {
-            seenMessageHashes.add(hash)
-            allChatMessages.push({ parts: sanitizeParts(parts), id: lastMessageId.current })
-            sendChatToParent()
-          }
+        if (type !== null) {
+          sendMessageToParent(parts, type)
         }
 
         return [...m, newMessage].slice(-messagesLimit)
@@ -185,8 +176,9 @@ export default () => {
       setMessages([])
       lastMessageId.current = 0
       clearCanvasChatMessages()
-      // Clear tracked messages and notify parent
       allChatMessages.length = 0
+      seenMessageHashes.clear()
+      nextMessageId = 0
       sendChatToParent()
     })
 
