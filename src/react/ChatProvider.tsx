@@ -14,6 +14,7 @@ import { hideNotification, showNotification } from './NotificationProvider'
 import { updateLoadedServerData } from './serversStorage'
 import { lastConnectOptions } from './AppStatusProvider'
 import { packetsReplayState } from './state/packetsReplayState'
+import { getThreeJsRendererMethods } from 'renderer/viewer/three/threeJsMethods'
 
 export type ChatMessageType = 'chat' | 'death' | 'join' | 'leave' | 'teleport' | 'title' | 'subtitle' | 'announcement' | 'kradle_command'
 
@@ -165,6 +166,16 @@ export default () => {
 
         if (type !== null) {
           sendMessageToParent(parts, type)
+        }
+
+        // Show chat in 3D above player heads
+        if (type === 'chat') {
+          const playerName = String((jsonMsg as any)?.with?.[0] ?? '').trim()
+          const msgPart = (jsonMsg as any)?.with?.[1]
+          const messageText = msgPart ? formatMessage(msgPart).map(p => p.text || '').join('').trim() : ''
+          if (playerName && messageText) {
+            getThreeJsRendererMethods()?.setPlayerChatLine(playerName, messageText)
+          }
         }
 
         return [...m, newMessage].slice(-messagesLimit)

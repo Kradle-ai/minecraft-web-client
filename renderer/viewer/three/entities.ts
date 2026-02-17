@@ -8,7 +8,6 @@ import { PlayerObject, PlayerAnimation } from 'skinview3d'
 import { loadSkinToCanvas, loadEarsToCanvasFromSkin, inferModelType, loadCapeToCanvas, loadImage } from 'skinview-utils'
 // todo replace with url
 import { degreesToRadians } from '@nxg-org/mineflayer-tracker/lib/mathUtils'
-import { NameTagObject } from 'skinview3d/libs/nametag'
 import { flat, fromFormattedString } from '@xmcl/text-component'
 import mojangson from 'mojangson'
 import { snakeCase } from 'change-case'
@@ -87,6 +86,133 @@ function poseToEuler (pose: any, defaultValue?: THREE.Euler) {
   return defaultValue ?? new THREE.Euler()
 }
 
+function createPlayerInfoCanvas (username: string, health: number, chatLine: string | null, fontFamily: string): HTMLCanvasElement {
+  const gap = 6
+  const sections: HTMLCanvasElement[] = []
+  if (chatLine) sections.push(createChatBubbleCanvas(chatLine, fontFamily))
+  sections.push(getUsernameTexture({ username }, { fontFamily }))
+  sections.push(createHealthBarCanvas(health, fontFamily))
+
+  const totalWidth = Math.max(...sections.map(c => c.width))
+  const totalHeight = sections.reduce((sum, c) => sum + c.height, 0) + gap * (sections.length - 1)
+
+  const canvas = document.createElement('canvas')
+  canvas.width = totalWidth
+  canvas.height = totalHeight
+
+  const ctx = canvas.getContext('2d')!
+  let y = 0
+  for (const section of sections) {
+    ctx.drawImage(section, Math.round((totalWidth - section.width) / 2), y)
+    y += section.height + gap
+  }
+
+  return canvas
+}
+
+function createChatBubbleCanvas (text: string, fontFamily: string): HTMLCanvasElement {
+  const canvas = document.createElement('canvas')
+  const ctx = canvas.getContext('2d')!
+  const fontSize = 36
+  const padding = 12
+  const tailHeight = 10
+  const radius = 8
+  const maxTextWidth = 550
+  const lineHeight = fontSize + 6
+
+  ctx.font = `${fontSize}px ${fontFamily}`
+
+  // Word-wrap
+  const words = text.split(' ')
+  const lines: string[] = []
+  let currentLine = ''
+  for (const word of words) {
+    const test = currentLine ? `${currentLine} ${word}` : word
+    if (ctx.measureText(test).width > maxTextWidth && currentLine) {
+      lines.push(currentLine)
+      currentLine = word
+    } else {
+      currentLine = test
+    }
+  }
+  if (currentLine) lines.push(currentLine)
+
+  const longestLineWidth = Math.max(...lines.map(l => ctx.measureText(l).width))
+  const bubbleW = longestLineWidth + padding * 2
+  const bubbleH = lineHeight * lines.length + padding * 2
+  canvas.width = Math.max(bubbleW, tailHeight * 2 + 4)
+  canvas.height = bubbleH + tailHeight
+
+  // Re-set font after canvas resize clears state
+  ctx.font = `${fontSize}px ${fontFamily}`
+
+  // Bubble body (rounded rect with downward tail)
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.65)'
+  ctx.beginPath()
+  ctx.moveTo(radius, 0)
+  ctx.lineTo(canvas.width - radius, 0)
+  ctx.quadraticCurveTo(canvas.width, 0, canvas.width, radius)
+  ctx.lineTo(canvas.width, bubbleH - radius)
+  ctx.quadraticCurveTo(canvas.width, bubbleH, canvas.width - radius, bubbleH)
+  ctx.lineTo(canvas.width / 2 + tailHeight, bubbleH)
+  ctx.lineTo(canvas.width / 2, bubbleH + tailHeight)
+  ctx.lineTo(canvas.width / 2 - tailHeight, bubbleH)
+  ctx.lineTo(radius, bubbleH)
+  ctx.quadraticCurveTo(0, bubbleH, 0, bubbleH - radius)
+  ctx.lineTo(0, radius)
+  ctx.quadraticCurveTo(0, 0, radius, 0)
+  ctx.closePath()
+  ctx.fill()
+
+  // Text — each line centered
+  ctx.fillStyle = 'white'
+  for (let i = 0; i < lines.length; i++) {
+    const lineWidth = ctx.measureText(lines[i]).width
+    ctx.fillText(lines[i], (canvas.width - lineWidth) / 2, padding + fontSize * 0.8 + i * lineHeight)
+  }
+
+  return canvas
+}
+
+function createHealthBarCanvas (health: number, fontFamily: string): HTMLCanvasElement {
+  const canvas = document.createElement('canvas')
+  const ctx = canvas.getContext('2d')!
+  const fontSize = 48
+  const padding = 4
+  const heartCount = 5
+
+  const heartStep = fontSize * 0.65 // tighter than measureText which includes emoji whitespace
+  canvas.width = heartStep * heartCount + padding * 2
+  canvas.height = Math.round(fontSize * 0.65) + padding * 2
+
+  // Background (same color as nametag, 25px border radius)
+  const r = 5
+  const w = canvas.width
+  const h = canvas.height
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.3)'
+  ctx.beginPath()
+  ctx.moveTo(r, 0)
+  ctx.lineTo(w - r, 0)
+  ctx.quadraticCurveTo(w, 0, w, r)
+  ctx.lineTo(w, h - r)
+  ctx.quadraticCurveTo(w, h, w - r, h)
+  ctx.lineTo(r, h)
+  ctx.quadraticCurveTo(0, h, 0, h - r)
+  ctx.lineTo(0, r)
+  ctx.quadraticCurveTo(0, 0, r, 0)
+  ctx.closePath()
+  ctx.fill()
+
+  ctx.font = `${fontSize}px ${fontFamily}`
+  const filledHearts = Math.round(health / 2)
+  for (let i = 0; i < heartCount; i++) {
+    ctx.fillStyle = i < filledHearts ? '#FF4444' : '#444444'
+    ctx.fillText('❤', padding + i * heartStep, canvas.height - padding)
+  }
+
+  return canvas
+}
+
 function getUsernameTexture ({
   username,
   nameTagBackgroundColor = 'rgba(0, 0, 0, 0.3)',
@@ -111,8 +237,22 @@ function getUsernameTexture ({
   canvas.width = textWidth
   canvas.height = (fontSize + padding) * lines.length
 
+  const r = 5
+  const w = canvas.width
+  const h = canvas.height
   ctx.fillStyle = nameTagBackgroundColor
-  ctx.fillRect(0, 0, canvas.width, canvas.height)
+  ctx.beginPath()
+  ctx.moveTo(r, 0)
+  ctx.lineTo(w - r, 0)
+  ctx.quadraticCurveTo(w, 0, w, r)
+  ctx.lineTo(w, h - r)
+  ctx.quadraticCurveTo(w, h, w - r, h)
+  ctx.lineTo(r, h)
+  ctx.quadraticCurveTo(0, h, 0, h - r)
+  ctx.lineTo(0, r)
+  ctx.quadraticCurveTo(0, 0, r, 0)
+  ctx.closePath()
+  ctx.fill()
 
   ctx.font = `${fontSize}px ${fontFamily}`
   ctx.fillStyle = `rgba(255, 255, 255, ${nameTagTextOpacity / 255})`
@@ -222,6 +362,7 @@ export class Entities {
   private entityAnimationStates = {} as Record<string, string>
   cachedMapsImages = {} as Record<number, string>
   itemFrameMaps = {} as Record<number, Array<THREE.Mesh<THREE.PlaneGeometry, THREE.MeshLambertMaterial>>>
+  private playerData = new Map<string, { chatLine: string | null; chatExpiry: number; health: number }>()
 
   get entitiesByName (): Record<string, SceneEntity[]> {
     const byName: Record<string, SceneEntity[]> = {}
@@ -746,20 +887,11 @@ export class Entities {
         const scale = 1 / 16
         wrapper.scale.set(scale, scale, scale)
 
-        if (entity.username) {
-          // todo proper colors
-          const nameTag = new NameTagObject(fromFormattedString(entity.username).text, {
-            font: `48px ${this.entitiesOptions.fontFamily}`,
-          })
-          nameTag.position.y = playerObject.position.y + playerObject.scale.y * 16 + 3
-          nameTag.renderOrder = 1000
-
-          //@ts-expect-error
-          wrapper.add(nameTag)
-        }
+        // Name is rendered in the combined playerInfo sprite (see updatePlayerNametagSprites)
 
         //@ts-expect-error
         group.playerObject = playerObject
+        group['playerUsername'] = entity.username
         wrapper.rotation.set(0, Math.PI, 0)
         mesh = wrapper
         playerObject.animation = new WalkingGeneralSwing()
@@ -796,6 +928,9 @@ export class Entities {
 
       if (isPlayerModel) {
         this.updatePlayerSkin(entity.id, entity.username, entity.uuid, overrides?.texture || stevePngUrl)
+        if (entity.username && entity.username.toLowerCase() !== 'watcher') {
+          this.updatePlayerNametagSprites(group as SceneEntity, entity.username)
+        }
       }
       this.setDebugMode(this.debugMode, group)
       this.setRendering(this.currentlyRendering, group)
@@ -1059,9 +1194,65 @@ export class Entities {
     }
   }
 
+  setPlayerChatLine (username: string, message: string) {
+    if (username.toLowerCase() === 'watcher') return
+    const data = this.playerData.get(username) ?? { chatLine: null, chatExpiry: 0, health: 20 }
+    data.chatLine = message
+    data.chatExpiry = Date.now() + 5000
+    this.playerData.set(username, data)
+    this.refreshPlayerNametag(username)
+    setTimeout(() => this.refreshPlayerNametag(username), 5000)
+  }
+
+  setPlayerHealth (username: string, health: number) {
+    if (username.toLowerCase() === 'watcher') return
+    const data = this.playerData.get(username) ?? { chatLine: null, chatExpiry: 0, health: 20 }
+    data.health = health
+    this.playerData.set(username, data)
+    this.refreshPlayerNametag(username)
+  }
+
+  private refreshPlayerNametag (username: string) {
+    for (const entityGroup of Object.values(this.entities)) {
+      if (entityGroup['playerUsername']?.toLowerCase() === username.toLowerCase()) {
+        this.updatePlayerNametagSprites(entityGroup, username)
+      }
+    }
+  }
+
+  private updatePlayerNametagSprites (entityGroup: SceneEntity, username: string) {
+    const data = this.playerData.get(username)
+    const now = Date.now()
+    const chatLine = data && data.chatExpiry > now ? data.chatLine : null
+    const health = data?.health ?? 20
+    const { fontFamily } = this.entitiesOptions
+
+    // Remove old combined sprite
+    const old = entityGroup.getObjectByName('playerInfo')
+    if (old) entityGroup.remove(old)
+
+    const infoCanvas = createPlayerInfoCanvas(username, health, chatLine, fontFamily)
+    const tex = new THREE.CanvasTexture(infoCanvas)
+    const mat = new THREE.SpriteMaterial({ map: tex, depthTest: false })
+    const sprite = new THREE.Sprite(mat)
+    sprite.renderOrder = 1000
+    sprite.name = 'playerInfo'
+
+    const scale = 0.005
+    const spriteW = infoCanvas.width * scale
+    const spriteH = infoCanvas.height * scale
+    sprite.scale.set(spriteW, spriteH, 1)
+
+    // Anchor bottom of sprite (health bar) at y=2.2
+    sprite.position.y = 2.2 + spriteH / 2
+
+    entityGroup.add(sprite)
+  }
+
   playerPerAnimation = {} as Record<number, string>
   onRemoveEntity (entity: import('prismarine-entity').Entity) {
     this.loadedSkinEntityIds.delete(entity.id)
+    this.playerData.delete(entity.username ?? '')
   }
 
   updateMap (mapNumber: string | number, data: string) {
