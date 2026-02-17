@@ -218,6 +218,8 @@ export class Entities {
   onSkinUpdate: () => void
   clock = new THREE.Clock()
   currentlyRendering = true
+  private lastEntityPositions = {} as Record<string, { x: number, z: number }>
+  private entityAnimationStates = {} as Record<string, string>
   cachedMapsImages = {} as Record<number, string>
   itemFrameMaps = {} as Record<number, Array<THREE.Mesh<THREE.PlaneGeometry, THREE.MeshLambertMaterial>>>
 
@@ -257,6 +259,8 @@ export class Entities {
       disposeObject(mesh)
     }
     this.entities = {}
+    this.lastEntityPositions = {}
+    this.entityAnimationStates = {}
   }
 
   setDebugMode (mode: string, entity: THREE.Object3D | null = null) {
@@ -289,18 +293,75 @@ export class Entities {
     }
 
     const dt = this.clock.getDelta()
+    const WALKING_SPEED = 0.1
+    const SPRINTING_SPEED = 3.5
 
     for (const entityId of Object.keys(this.entities)) {
       const entity = this.entities[entityId]
       const playerObject = entity.playerObject as PlayerObjectType | undefined
 
+      // Detect movement from mesh position changes and update animation state
+      if (playerObject?.animation instanceof WalkingGeneralSwing) {
+        const prev = this.lastEntityPositions[entityId]
+        const pos = entity.position
+        if (prev && dt > 0) {
+          console.log('pos', pos)
+          const speed = Math.max(Math.abs(pos.x - prev.x), Math.abs(pos.z - prev.z)) / dt
+          const isWalking = speed > WALKING_SPEED
+          const isSprinting = speed > SPRINTING_SPEED
+          console.log('speed', speed, isWalking, isSprinting)
+          const newAnimation = isWalking ? (isSprinting ? 'running' : 'walking') : 'idle'
+          if (newAnimation !== this.entityAnimationStates[entityId]) {
+            playerObject.animation.isMoving = newAnimation !== 'idle'
+            playerObject.animation.isRunning = newAnimation === 'running'
+            this.entityAnimationStates[entityId] = newAnimation
+          }
+        }
+        this.lastEntityPositions[entityId] = { x: pos.x, z: pos.z }
+      }
+
       // Update animations (skip if paused)
       if (playerObject?.animation && !playerObject.animation.paused) {
         playerObject.animation.update(playerObject, dt)
+
+        // Sync armor bone rotations with player model limbs
+        this.syncArmorBones(entity, playerObject)
       }
 
       // Always make entities visible (fixes issue with entities not appearing until interacted with)
       entity.visible = true
+    }
+  }
+
+  private syncArmorBones (entity: SceneEntity, playerObject: PlayerObjectType) {
+    const { skin } = playerObject
+    for (const child of entity.children) {
+      if (!(child instanceof THREE.SkinnedMesh)) continue
+      const { skeleton } = child
+      if (!skeleton) continue
+      for (const bone of skeleton.bones) {
+        switch (bone.name) {
+          case 'bone_leftleg':
+            bone.rotation.x = skin.leftLeg.rotation.x
+            break
+          case 'bone_rightleg':
+            bone.rotation.x = skin.rightLeg.rotation.x
+            break
+          case 'bone_leftarm':
+            bone.rotation.x = skin.leftArm.rotation.x
+            bone.rotation.z = skin.leftArm.rotation.z
+            break
+          case 'bone_rightarm':
+            bone.rotation.x = skin.rightArm.rotation.x
+            bone.rotation.z = skin.rightArm.rotation.z
+            break
+          case 'bone_head':
+            bone.rotation.x = -skin.head.rotation.x
+            bone.rotation.y = -skin.head.rotation.y
+            bone.position.y = 13
+            break
+        }
+      }
     }
   }
 
@@ -636,6 +697,8 @@ export class Entities {
       disposeObject(e)
       // todo dispose textures as well ?
       delete this.entities[entity.id]
+      delete this.lastEntityPositions[entity.id]
+      delete this.entityAnimationStates[entity.id]
       return
     }
 
@@ -1138,6 +1201,7 @@ export class Entities {
             group.rotation.y = Math.PI / 4 + Math.PI // Flip 180 degrees
           } else {
             itemMesh.rotation.z = -Math.PI / 4
+            itemMesh.rotation.x = Math.PI
             group.rotation.y = Math.PI / 2 + Math.PI // Flip 180 degrees
             group.scale.multiplyScalar(2)
           }
