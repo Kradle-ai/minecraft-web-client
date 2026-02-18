@@ -55,6 +55,7 @@ declare const customEvents: import('typed-emitter').default<{
     totalDuration: number
   }): void // emitted periodically during serverless packet replay
   clearChat (): void // emitted when chat should be cleared (on seek/restart)
+  seekComplete (): void // emitted after fast-forward finishes; triggers batch refresh of nametags/outlines
 }>
 declare const beforeRenderFrame: Array<() => void>
 

@@ -128,7 +128,7 @@ function addPlayerOutline (playerObject: PlayerObjectType): { cleanup: () => voi
     })
   }
 
-  patchObject(playerObject)
+  patchObject(playerObject as unknown as THREE.Object3D)
 
   // Solid white outline meshes — GreaterDepth only passes where the mesh is behind
   // world geometry (walls). Arms/legs use scaled BoxGeometry so copy position/rotation/scale.
