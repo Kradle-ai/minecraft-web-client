@@ -104,7 +104,7 @@ export async function loadImageFromUrl (imageUrl: string): Promise<HTMLImageElem
 }
 
 export function getLookupUrl (username: string, type: 'skin' | 'cape'): string {
-  return `https://mulv.tycrek.dev/api/lookup?username=${username}&type=${type}`
+  return `https://mineskin.eu/${type}/${username}`
 }
 
 export async function loadSkinImage (skinUrl: string): Promise<{ canvas: HTMLCanvasElement, image: HTMLImageElement }> {
