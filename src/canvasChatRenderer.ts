@@ -32,7 +32,6 @@ function loadLogoImage (url: string): HTMLImageElement | null {
   // Start loading
   logoCache.set(url, 'loading')
   const img = new Image()
-  img.crossOrigin = 'anonymous'
   img.onload = () => {
     logoCache.set(url, img)
   }
@@ -671,93 +670,96 @@ export function renderChatOnCanvas (): void {
 
 
 export function providerLogo (provider: string): string | null {
-  const providerLogoURLs: Record<string, string> = {
-    google: 'https://openrouter.ai/images/icons/GoogleGemini.svg',
-    gemini: 'https://openrouter.ai/images/icons/GoogleGemini.svg',
-    anthropic:
-      'https://firebasestorage.googleapis.com/v0/b/kradle-prod-storage/o/public%2Fdefaults%2Fanthropic.svg?alt=media',
-    claude:
-      'https://firebasestorage.googleapis.com/v0/b/kradle-prod-storage/o/public%2Fdefaults%2Fanthropic.svg?alt=media',
-    openai: 'https://openrouter.ai/images/icons/OpenAI.svg',
-    amazon: 'https://openrouter.ai/images/icons/Bedrock.svg',
-    'arcee-ai':
-      'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://arcee.ai/&size=256',
-    ai21: 'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://ai21.com/&size=256',
-    'aion-labs':
-      'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://www.aionlabs.ai/&size=256',
-    alfredpros:
-      'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://huggingface.co/&size=256',
-    allenai:
-      'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://allenai.org/&size=256',
-    openrouter:
-      'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://openrouter.ai/&size=256',
-    baidu:
-      'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://www.baidu.com/&size=256',
-    bytedance:
-      'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://huggingface.co/&size=256',
-    deepcogito:
-      'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://www.deepcogito.com/&size=256',
-    cohere: 'https://openrouter.ai/images/icons/Cohere.png',
-    deepseek: 'https://openrouter.ai/images/icons/DeepSeek.png',
-    'eva-unit-01': 'https://openrouter.ai/images/icons/Qwen.png',
-    inception:
-      'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://www.inceptionlabs.ai/&size=256',
-    inflection:
-      'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://inflection.ai/&size=256',
-    liquid:
-      'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://www.liquid.ai/&size=256',
-    alpindale:
-      'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://huggingface.co/&size=256',
-    'anthracite-org':
-      'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://huggingface.co/&size=256',
-    mancer:
-      'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://huggingface.co/&size=256',
-    meituan:
-      'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://huggingface.co/&size=256',
-    'meta-llama':
-      'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://ai.meta.com/&size=256',
-    microsoft: 'https://openrouter.ai/images/icons/Microsoft.svg',
-    mistralai: 'https://openrouter.ai/images/icons/Mistral.png',
-    moonshotai:
-      'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://moonshot.ai&size=256',
-    gryphe:
-      'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://huggingface.co/&size=256',
-    nvidia:
-      'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://nvidia.com/&size=256',
-    neversleep:
-      'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://huggingface.co/&size=256',
-    nousresearch:
-      'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://nousresearch.com/&size=256',
-    perplexity: 'https://openrouter.ai/images/icons/Perplexity.svg',
-    qwen: 'https://openrouter.ai/images/icons/Qwen.png',
-    undi95:
-      'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://nousresearch.com/&size=256',
-    sao10k:
-      'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://huggingface.co/&size=256',
-    raifle:
-      'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://huggingface.co/&size=256',
-    'stepfun-ai':
-      'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://huggingface.co/&size=256',
-    thudm:
-      'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://z.ai/&size=256',
-    tngtech:
-      'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://huggingface.co/&size=256',
-    tencent:
-      'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://huggingface.co/&size=256',
-    thedrummer: 'https://openrouter.ai/images/icons/TheDrummer.png',
-    cognitivecomputations:
-      'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://huggingface.co/&size=256',
-    'z-ai':
-      'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://z.ai/&size=256',
-    'x-ai': 'https://firebasestorage.googleapis.com/v0/b/kradle-prod-storage/o/public%2Fdefaults%2Fxai.svg?alt=media',
-    grok: 'https://firebasestorage.googleapis.com/v0/b/kradle-prod-storage/o/public%2Fdefaults%2Fxai.svg?alt=media'
-  }
+  // TODO: Implement provider logo fetching
+  return null
 
-  try {
-    return providerLogoURLs[provider]
-  } catch {
-    return null
-  }
+  // const providerLogoURLs: Record<string, string> = {
+  //   google: 'https://openrouter.ai/images/icons/GoogleGemini.svg',
+  //   gemini: 'https://openrouter.ai/images/icons/GoogleGemini.svg',
+  //   anthropic:
+  //     'https://firebasestorage.googleapis.com/v0/b/kradle-prod-storage/o/public%2Fdefaults%2Fanthropic.svg?alt=media',
+  //   claude:
+  //     'https://firebasestorage.googleapis.com/v0/b/kradle-prod-storage/o/public%2Fdefaults%2Fanthropic.svg?alt=media',
+  //   openai: 'https://openrouter.ai/images/icons/OpenAI.svg',
+  //   amazon: 'https://openrouter.ai/images/icons/Bedrock.svg',
+  //   'arcee-ai':
+  //     'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://arcee.ai/&size=256',
+  //   ai21: 'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://ai21.com/&size=256',
+  //   'aion-labs':
+  //     'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://www.aionlabs.ai/&size=256',
+  //   alfredpros:
+  //     'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://huggingface.co/&size=256',
+  //   allenai:
+  //     'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://allenai.org/&size=256',
+  //   openrouter:
+  //     'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://openrouter.ai/&size=256',
+  //   baidu:
+  //     'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://www.baidu.com/&size=256',
+  //   bytedance:
+  //     'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://huggingface.co/&size=256',
+  //   deepcogito:
+  //     'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://www.deepcogito.com/&size=256',
+  //   cohere: 'https://openrouter.ai/images/icons/Cohere.png',
+  //   deepseek: 'https://openrouter.ai/images/icons/DeepSeek.png',
+  //   'eva-unit-01': 'https://openrouter.ai/images/icons/Qwen.png',
+  //   inception:
+  //     'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://www.inceptionlabs.ai/&size=256',
+  //   inflection:
+  //     'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://inflection.ai/&size=256',
+  //   liquid:
+  //     'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://www.liquid.ai/&size=256',
+  //   alpindale:
+  //     'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://huggingface.co/&size=256',
+  //   'anthracite-org':
+  //     'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://huggingface.co/&size=256',
+  //   mancer:
+  //     'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://huggingface.co/&size=256',
+  //   meituan:
+  //     'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://huggingface.co/&size=256',
+  //   'meta-llama':
+  //     'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://ai.meta.com/&size=256',
+  //   microsoft: 'https://openrouter.ai/images/icons/Microsoft.svg',
+  //   mistralai: 'https://openrouter.ai/images/icons/Mistral.png',
+  //   moonshotai:
+  //     'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://moonshot.ai&size=256',
+  //   gryphe:
+  //     'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://huggingface.co/&size=256',
+  //   nvidia:
+  //     'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://nvidia.com/&size=256',
+  //   neversleep:
+  //     'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://huggingface.co/&size=256',
+  //   nousresearch:
+  //     'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://nousresearch.com/&size=256',
+  //   perplexity: 'https://openrouter.ai/images/icons/Perplexity.svg',
+  //   qwen: 'https://openrouter.ai/images/icons/Qwen.png',
+  //   undi95:
+  //     'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://nousresearch.com/&size=256',
+  //   sao10k:
+  //     'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://huggingface.co/&size=256',
+  //   raifle:
+  //     'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://huggingface.co/&size=256',
+  //   'stepfun-ai':
+  //     'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://huggingface.co/&size=256',
+  //   thudm:
+  //     'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://z.ai/&size=256',
+  //   tngtech:
+  //     'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://huggingface.co/&size=256',
+  //   tencent:
+  //     'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://huggingface.co/&size=256',
+  //   thedrummer: 'https://openrouter.ai/images/icons/TheDrummer.png',
+  //   cognitivecomputations:
+  //     'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://huggingface.co/&size=256',
+  //   'z-ai':
+  //     'https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://z.ai/&size=256',
+  //   'x-ai': 'https://firebasestorage.googleapis.com/v0/b/kradle-prod-storage/o/public%2Fdefaults%2Fxai.svg?alt=media',
+  //   grok: 'https://firebasestorage.googleapis.com/v0/b/kradle-prod-storage/o/public%2Fdefaults%2Fxai.svg?alt=media'
+  // }
+
+  // try {
+  //   return providerLogoURLs[provider]
+  // } catch {
+  //   return null
+  // }
 }
 
 // Preload all logos on module load
