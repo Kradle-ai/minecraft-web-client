@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import mojangson from 'mojangson'
 import nbt from 'prismarine-nbt'
 import type { ClientOnMap } from '../generatedServerPackets'
+import { formatMessage } from '../chatUtils'
+import { sendMessageToParent } from './ChatProvider'
 import Title from './Title'
 import type { AnimationTimes } from './Title'
 
@@ -41,11 +43,15 @@ export default () => {
   useMemo(() => {
     // todo move to mineflayer
     bot._client.on('set_title_text', (packet) => {
-      setTitle(getComponent(packet.text))
+      const component = getComponent(packet.text)
+      setTitle(component)
       setOpenTitle(true)
+      sendMessageToParent(formatMessage(component), 'title')
     })
     bot._client.on('set_title_subtitle', (packet) => {
-      setSubtitle(getComponent(packet.text))
+      const component = getComponent(packet.text)
+      setSubtitle(component)
+      sendMessageToParent(formatMessage(component), 'subtitle')
     })
     bot._client.on('action_bar', (packet) => {
       setActionBar(getComponent(packet.text))
@@ -81,13 +87,19 @@ export default () => {
         mes = packet
       }
       switch (mes.action) {
-        case 0:
-          setTitle(JSON.parse(mes.text))
+        case 0: {
+          const component = JSON.parse(mes.text)
+          setTitle(component)
           setOpenTitle(true)
+          sendMessageToParent(formatMessage(component), 'title')
           break
-        case 1:
-          setSubtitle(JSON.parse(mes.text))
+        }
+        case 1: {
+          const component = JSON.parse(mes.text)
+          setSubtitle(component)
+          sendMessageToParent(formatMessage(component), 'subtitle')
           break
+        }
         case 2:
           setActionBar(JSON.parse(mes.text))
           setOpenActionBar(true)

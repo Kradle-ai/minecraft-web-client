@@ -46,7 +46,8 @@ export const defaultWorldRendererConfig = {
   highlightBlockColor: 'blue',
   foreground: true,
   _experimentalSmoothChunkLoading: true,
-  _renderByChunks: false
+  _renderByChunks: false,
+  xrayMode: true,
 }
 
 export type WorldRendererConfig = typeof defaultWorldRendererConfig

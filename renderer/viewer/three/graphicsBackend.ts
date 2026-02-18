@@ -33,6 +33,8 @@ const getBackendMethods = (worldRenderer: WorldRendererThree) => {
     setVideoVolume: worldRenderer.setVideoVolume.bind(worldRenderer),
     setVideoSpeed: worldRenderer.setVideoSpeed.bind(worldRenderer),
     shakeFromDamage: worldRenderer.cameraShake.shakeFromDamage.bind(worldRenderer.cameraShake),
+    setPlayerChatLine: worldRenderer.entities.setPlayerChatLine.bind(worldRenderer.entities),
+    setPlayerHealth: worldRenderer.entities.setPlayerHealth.bind(worldRenderer.entities),
   }
 }
 

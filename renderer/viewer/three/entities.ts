@@ -8,7 +8,6 @@ import { PlayerObject, PlayerAnimation } from 'skinview3d'
 import { loadSkinToCanvas, loadEarsToCanvasFromSkin, inferModelType, loadCapeToCanvas, loadImage } from 'skinview-utils'
 // todo replace with url
 import { degreesToRadians } from '@nxg-org/mineflayer-tracker/lib/mathUtils'
-import { NameTagObject } from 'skinview3d/libs/nametag'
 import { flat, fromFormattedString } from '@xmcl/text-component'
 import mojangson from 'mojangson'
 import { snakeCase } from 'change-case'
@@ -17,6 +16,7 @@ import { BlockModel } from 'mc-assets'
 import { isEntityAttackable } from 'mineflayer-mouse/dist/attackableEntity'
 import { Vec3 } from 'vec3'
 import { EntityMetadataVersions } from '../../../src/mcDataTypes'
+import { isSkippingMessages } from '../../../src/react/ChatProvider'
 import { ItemSpecificContextProperties } from '../lib/basePlayerState'
 import { loadSkinImage, getLookupUrl, stevePngUrl, steveTexture } from '../lib/utils/skins'
 import { loadTexture } from '../lib/utils'
@@ -87,6 +87,220 @@ function poseToEuler (pose: any, defaultValue?: THREE.Euler) {
   return defaultValue ?? new THREE.Euler()
 }
 
+// --- Player outline (through-walls ghost effect) ---
+
+const OUTLINE_RENDER_ORDER = 502
+
+const SKIN_RENDER_ORDER = OUTLINE_RENDER_ORDER + 1
+
+function addPlayerOutline (playerObject: PlayerObjectType): { cleanup: () => void; patchObject: (obj: THREE.Object3D) => void } {
+  // The core problem: outline GreaterDepth was comparing against the player's own skin
+  // already written in the opaque depth buffer, causing it to show at visible player pixels.
+  //
+  // Fix: move ALL skin/armor meshes into the transparent pass at SKIN_RENDER_ORDER (503).
+  // Render order in the transparent pass:
+  //   1. Outline meshes (502): GreaterDepth vs world-only depth (opaque pass wrote chunks,
+  //      no player skin yet) → outline only appears through walls, no inter-body bleed
+  //   2. Skin/armor meshes (503): normal LessEqual depth test → covers outline where visible
+  type MeshState = { mesh: THREE.Mesh; origRenderOrder: number }
+  type MatState = { mat: THREE.Material; wasTransparent: boolean }
+  const meshStates: MeshState[] = []
+  const matStates: MatState[] = []
+  const patchedMats = new WeakSet<THREE.Material>()
+
+  // Patch a single object (and its descendants): move into transparent pass at SKIN_RENDER_ORDER.
+  // Called once for the player skin at outline creation, and again for each armor piece as it loads.
+  const patchObject = (root: THREE.Object3D) => {
+    root.traverse((obj: THREE.Object3D) => {
+      if (!(obj instanceof THREE.Mesh)) return
+      meshStates.push({ mesh: obj, origRenderOrder: obj.renderOrder })
+      obj.renderOrder = SKIN_RENDER_ORDER
+      const mats = Array.isArray(obj.material) ? obj.material : [obj.material]
+      for (const mat of mats as THREE.Material[]) {
+        if (patchedMats.has(mat)) continue
+        patchedMats.add(mat)
+        matStates.push({ mat, wasTransparent: mat.transparent })
+        if (!mat.transparent) {
+          mat.transparent = true
+          mat.needsUpdate = true
+        }
+      }
+    })
+  }
+
+  patchObject(playerObject as unknown as THREE.Object3D)
+
+  // Solid white outline meshes — GreaterDepth only passes where the mesh is behind
+  // world geometry (walls). Arms/legs use scaled BoxGeometry so copy position/rotation/scale.
+  const outlineMat = new THREE.MeshBasicMaterial({
+    color: 0xFF_FF_FF,
+    depthTest: true,
+    depthWrite: false,
+    depthFunc: THREE.GreaterDepth,
+    transparent: true,
+    opacity: 0.5,
+  })
+
+  const addedMeshes: THREE.Mesh[] = []
+  const skin = playerObject.skin as any
+  const bodyParts = [skin.head, skin.body, skin.rightArm, skin.leftArm, skin.rightLeg, skin.leftLeg]
+
+  for (const part of bodyParts) {
+    if (!part?.outerLayer) continue
+    part.outerLayer.traverse((obj: THREE.Object3D) => {
+      if (!(obj instanceof THREE.Mesh) || !obj.parent) return
+      const outlineMesh = new THREE.Mesh(obj.geometry, outlineMat)
+      outlineMesh.renderOrder = OUTLINE_RENDER_ORDER
+      outlineMesh.position.copy(obj.position)
+      outlineMesh.rotation.copy(obj.rotation)
+      outlineMesh.scale.copy(obj.scale)
+      obj.parent.add(outlineMesh)
+      addedMeshes.push(outlineMesh)
+    })
+  }
+
+  return {
+    patchObject,
+    cleanup () {
+      for (const { mesh, origRenderOrder } of meshStates) {
+        mesh.renderOrder = origRenderOrder
+      }
+      for (const { mat, wasTransparent } of matStates) {
+        mat.transparent = wasTransparent
+        mat.needsUpdate = true
+      }
+      for (const m of addedMeshes) m.parent?.remove(m)
+      outlineMat.dispose()
+    },
+  }
+}
+
+function createPlayerInfoCanvas (username: string, health: number, chatLine: string | null, fontFamily: string): HTMLCanvasElement {
+  const gap = 6
+  const sections: HTMLCanvasElement[] = []
+  if (chatLine) sections.push(createChatBubbleCanvas(chatLine, fontFamily))
+  sections.push(getUsernameTexture({ username }, { fontFamily }), createHealthBarCanvas(health, fontFamily))
+
+  const totalWidth = Math.max(...sections.map(c => c.width))
+  const totalHeight = sections.reduce((sum, c) => sum + c.height, 0) + gap * (sections.length - 1)
+
+  const canvas = document.createElement('canvas')
+  canvas.width = totalWidth
+  canvas.height = totalHeight
+
+  const ctx = canvas.getContext('2d')!
+  let y = 0
+  for (const section of sections) {
+    ctx.drawImage(section, Math.round((totalWidth - section.width) / 2), y)
+    y += section.height + gap
+  }
+
+  return canvas
+}
+
+function createChatBubbleCanvas (text: string, fontFamily: string): HTMLCanvasElement {
+  const canvas = document.createElement('canvas')
+  const ctx = canvas.getContext('2d')!
+  const fontSize = 36
+  const padding = 12
+  const tailHeight = 10
+  const radius = 8
+  const maxTextWidth = 550
+  const lineHeight = fontSize + 6
+
+  ctx.font = `${fontSize}px ${fontFamily}`
+
+  // Word-wrap
+  const words = text.split(' ')
+  const lines: string[] = []
+  let currentLine = ''
+  for (const word of words) {
+    const test = currentLine ? `${currentLine} ${word}` : word
+    if (ctx.measureText(test).width > maxTextWidth && currentLine) {
+      lines.push(currentLine)
+      currentLine = word
+    } else {
+      currentLine = test
+    }
+  }
+  if (currentLine) lines.push(currentLine)
+
+  const longestLineWidth = Math.max(...lines.map(l => ctx.measureText(l).width))
+  const bubbleW = longestLineWidth + padding * 2
+  const bubbleH = lineHeight * lines.length + padding * 2
+  canvas.width = Math.max(bubbleW, tailHeight * 2 + 4)
+  canvas.height = bubbleH + tailHeight
+
+  // Re-set font after canvas resize clears state
+  ctx.font = `${fontSize}px ${fontFamily}`
+
+  // Bubble body (rounded rect with downward tail)
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.65)'
+  ctx.beginPath()
+  ctx.moveTo(radius, 0)
+  ctx.lineTo(canvas.width - radius, 0)
+  ctx.quadraticCurveTo(canvas.width, 0, canvas.width, radius)
+  ctx.lineTo(canvas.width, bubbleH - radius)
+  ctx.quadraticCurveTo(canvas.width, bubbleH, canvas.width - radius, bubbleH)
+  ctx.lineTo(canvas.width / 2 + tailHeight, bubbleH)
+  ctx.lineTo(canvas.width / 2, bubbleH + tailHeight)
+  ctx.lineTo(canvas.width / 2 - tailHeight, bubbleH)
+  ctx.lineTo(radius, bubbleH)
+  ctx.quadraticCurveTo(0, bubbleH, 0, bubbleH - radius)
+  ctx.lineTo(0, radius)
+  ctx.quadraticCurveTo(0, 0, radius, 0)
+  ctx.closePath()
+  ctx.fill()
+
+  // Text — each line centered
+  ctx.fillStyle = 'white'
+  for (const [i, line] of lines.entries()) {
+    const lineWidth = ctx.measureText(line).width
+    ctx.fillText(line, (canvas.width - lineWidth) / 2, padding + fontSize * 0.8 + i * lineHeight)
+  }
+
+  return canvas
+}
+
+function createHealthBarCanvas (health: number, fontFamily: string): HTMLCanvasElement {
+  const canvas = document.createElement('canvas')
+  const ctx = canvas.getContext('2d')!
+  const fontSize = 48
+  const padding = 4
+  const heartCount = 5
+
+  const heartStep = fontSize * 0.65 // tighter than measureText which includes emoji whitespace
+  canvas.width = heartStep * heartCount + padding * 2
+  canvas.height = Math.round(fontSize * 0.65) + padding * 2
+
+  // Background (same color as nametag, 25px border radius)
+  const r = 5
+  const w = canvas.width
+  const h = canvas.height
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.3)'
+  ctx.beginPath()
+  ctx.moveTo(r, 0)
+  ctx.lineTo(w - r, 0)
+  ctx.quadraticCurveTo(w, 0, w, r)
+  ctx.lineTo(w, h - r)
+  ctx.quadraticCurveTo(w, h, w - r, h)
+  ctx.lineTo(r, h)
+  ctx.quadraticCurveTo(0, h, 0, h - r)
+  ctx.lineTo(0, r)
+  ctx.quadraticCurveTo(0, 0, r, 0)
+  ctx.closePath()
+  ctx.fill()
+
+  ctx.font = `${fontSize}px ${fontFamily}`
+  const filledHearts = Math.round(health / 2)
+  for (let i = 0; i < heartCount; i++) {
+    ctx.fillStyle = i < filledHearts ? '#FF4444' : '#444444'
+    ctx.fillText('❤', padding + i * heartStep, canvas.height - padding)
+  }
+
+  return canvas
+}
+
 function getUsernameTexture ({
   username,
   nameTagBackgroundColor = 'rgba(0, 0, 0, 0.3)',
@@ -111,8 +325,22 @@ function getUsernameTexture ({
   canvas.width = textWidth
   canvas.height = (fontSize + padding) * lines.length
 
+  const r = 5
+  const w = canvas.width
+  const h = canvas.height
   ctx.fillStyle = nameTagBackgroundColor
-  ctx.fillRect(0, 0, canvas.width, canvas.height)
+  ctx.beginPath()
+  ctx.moveTo(r, 0)
+  ctx.lineTo(w - r, 0)
+  ctx.quadraticCurveTo(w, 0, w, r)
+  ctx.lineTo(w, h - r)
+  ctx.quadraticCurveTo(w, h, w - r, h)
+  ctx.lineTo(r, h)
+  ctx.quadraticCurveTo(0, h, 0, h - r)
+  ctx.lineTo(0, r)
+  ctx.quadraticCurveTo(0, 0, r, 0)
+  ctx.closePath()
+  ctx.fill()
 
   ctx.font = `${fontSize}px ${fontFamily}`
   ctx.fillStyle = `rgba(255, 255, 255, ${nameTagTextOpacity / 255})`
@@ -218,10 +446,12 @@ export class Entities {
   onSkinUpdate: () => void
   clock = new THREE.Clock()
   currentlyRendering = true
+  private currentXrayMode: boolean | undefined = undefined
   private lastEntityPositions = {} as Record<string, { x: number, z: number }>
   private entityAnimationStates = {} as Record<string, string>
   cachedMapsImages = {} as Record<number, string>
   itemFrameMaps = {} as Record<number, Array<THREE.Mesh<THREE.PlaneGeometry, THREE.MeshLambertMaterial>>>
+  private playerData = new Map<string, { chatLine: string | null; chatExpiry: number; health: number }>()
 
   get entitiesByName (): Record<string, SceneEntity[]> {
     const byName: Record<string, SceneEntity[]> = {}
@@ -241,14 +471,26 @@ export class Entities {
     this.debugMode = 'none'
     this.onSkinUpdate = () => { }
 
-    // Listen for agent skins updates and re-evaluate all player skins
     if (typeof customEvents !== 'undefined') {
+      // Listen for agent skins updates and re-evaluate all player skins
       customEvents.on('agentSkinsUpdated', () => {
-        // console.log('[Custom Skin Debug] agentSkinsUpdated event received in entities.ts')
-        // Small delay to ensure the map is fully populated
         setTimeout(() => {
           this.reEvaluateAllPlayerSkins()
         }, 100)
+      })
+
+      // After a seek/fast-forward completes, batch-refresh all player nametags and
+      // force the xray outline to re-evaluate (it was skipped during fast-forward).
+      customEvents.on('seekComplete', () => {
+        // Clear stale chat lines — they are from before the seek and must not appear
+        for (const data of this.playerData.values()) {
+          data.chatLine = null
+          data.chatExpiry = 0
+        }
+        this.refreshAllPlayerNametags()
+        // Setting currentXrayMode to undefined causes the next render() call to
+        // invoke updateAllPlayerOutlines(), re-adding outlines for all entities at once.
+        this.currentXrayMode = undefined
       })
     }
   }
@@ -292,6 +534,12 @@ export class Entities {
       this.setRendering(renderEntitiesConfig)
     }
 
+    const { xrayMode } = this.worldRenderer.worldRendererConfig
+    if (xrayMode !== this.currentXrayMode) {
+      this.currentXrayMode = xrayMode
+      this.updateAllPlayerOutlines(xrayMode)
+    }
+
     const dt = this.clock.getDelta()
     const WALKING_SPEED = 0.1
     const SPRINTING_SPEED = 3.5
@@ -305,11 +553,9 @@ export class Entities {
         const prev = this.lastEntityPositions[entityId]
         const pos = entity.position
         if (prev && dt > 0) {
-          console.log('pos', pos)
           const speed = Math.max(Math.abs(pos.x - prev.x), Math.abs(pos.z - prev.z)) / dt
           const isWalking = speed > WALKING_SPEED
           const isSprinting = speed > SPRINTING_SPEED
-          console.log('speed', speed, isWalking, isSprinting)
           const newAnimation = isWalking ? (isSprinting ? 'running' : 'walking') : 'idle'
           if (newAnimation !== this.entityAnimationStates[entityId]) {
             playerObject.animation.isMoving = newAnimation !== 'idle'
@@ -330,6 +576,32 @@ export class Entities {
 
       // Always make entities visible (fixes issue with entities not appearing until interacted with)
       entity.visible = true
+
+
+    }
+  }
+
+  private updateAllPlayerOutlines (xrayMode: boolean) {
+    for (const group of Object.values(this.entities)) {
+      const username = group['playerUsername'] as string | undefined
+      if (!username || username.toLowerCase() === 'watcher') continue
+      if (xrayMode && !group['outlineCleanup']) {
+        const playerObject = group['playerObject'] as PlayerObjectType | undefined
+        if (!playerObject) continue
+        const outline = addPlayerOutline(playerObject)
+        group['outlineCleanup'] = outline.cleanup
+        group['outlinePatchObject'] = outline.patchObject
+        // Patch any armor already on the entity
+        for (const child of group.children) {
+          if (typeof child.name === 'string' && child.name.startsWith('geometry_armor_')) {
+            outline.patchObject(child)
+          }
+        }
+      } else if (!xrayMode && group['outlineCleanup']) {
+        group['outlineCleanup']()
+        group['outlineCleanup'] = undefined
+        group['outlinePatchObject'] = undefined
+      }
     }
   }
 
@@ -748,20 +1020,19 @@ export class Entities {
         const scale = 1 / 16
         wrapper.scale.set(scale, scale, scale)
 
-        if (entity.username) {
-          // todo proper colors
-          const nameTag = new NameTagObject(fromFormattedString(entity.username).text, {
-            font: `48px ${this.entitiesOptions.fontFamily}`,
-          })
-          nameTag.position.y = playerObject.position.y + playerObject.scale.y * 16 + 3
-          nameTag.renderOrder = 1000
+        // Name is rendered in the combined playerInfo sprite (see updatePlayerNametagSprites)
 
-          //@ts-expect-error
-          wrapper.add(nameTag)
+        // Through-wall ghost outline for non-watcher players (only when xrayMode is enabled)
+        // Skip during seek — outlines are rebuilt on seekComplete via updateAllPlayerOutlines
+        if (!isSkippingMessages() && this.worldRenderer.worldRendererConfig.xrayMode && entity.username && entity.username.toLowerCase() !== 'watcher') {
+          const outline = addPlayerOutline(playerObject)
+          group['outlineCleanup'] = outline.cleanup
+          group['outlinePatchObject'] = outline.patchObject
         }
 
         //@ts-expect-error
         group.playerObject = playerObject
+        group['playerUsername'] = entity.username
         wrapper.rotation.set(0, Math.PI, 0)
         mesh = wrapper
         playerObject.animation = new WalkingGeneralSwing()
@@ -798,6 +1069,9 @@ export class Entities {
 
       if (isPlayerModel) {
         this.updatePlayerSkin(entity.id, entity.username, entity.uuid, overrides?.texture || stevePngUrl)
+        if (entity.username && entity.username.toLowerCase() !== 'watcher') {
+          this.updatePlayerNametagSprites(group as SceneEntity, entity.username)
+        }
       }
       this.setDebugMode(this.debugMode, group)
       this.setRendering(this.currentlyRendering, group)
@@ -1061,9 +1335,99 @@ export class Entities {
     }
   }
 
+  setPlayerChatLine (username: string, message: string) {
+    if (username.toLowerCase() === 'watcher') return
+    const data = this.playerData.get(username) ?? { chatLine: null, chatExpiry: 0, health: 20 }
+    data.chatLine = message
+    data.chatExpiry = Date.now() + 5000
+    this.playerData.set(username, data)
+    this.refreshPlayerNametag(username)
+    setTimeout(() => this.refreshPlayerNametag(username), 5000)
+  }
+
+  setPlayerHealth (username: string, health: number) {
+    if (username.toLowerCase() === 'watcher') return
+    const data = this.playerData.get(username) ?? { chatLine: null, chatExpiry: 0, health: 20 }
+    data.health = health
+    this.playerData.set(username, data)
+    this.refreshPlayerNametag(username)
+  }
+
+  private refreshPlayerNametag (username: string) {
+    for (const entityGroup of Object.values(this.entities)) {
+      if (entityGroup['playerUsername']?.toLowerCase() === username.toLowerCase()) {
+        this.updatePlayerNametagSprites(entityGroup, username)
+      }
+    }
+  }
+
+  private refreshAllPlayerNametags () {
+    for (const group of Object.values(this.entities)) {
+      const username = group['playerUsername'] as string | undefined
+      if (username) this.updatePlayerNametagSprites(group, username)
+    }
+  }
+
+  private updatePlayerNametagSprites (entityGroup: SceneEntity, username: string) {
+    // Skip canvas creation during seek/fast-forward; seekComplete will batch-refresh all.
+    if (isSkippingMessages()) return
+
+    const data = this.playerData.get(username)
+    const now = Date.now()
+    const chatLine = data && data.chatExpiry > now ? data.chatLine : null
+    const health = data?.health ?? 20
+    const { fontFamily } = this.entitiesOptions
+
+    // Remove old sprites
+    const old = entityGroup.getObjectByName('playerInfo')
+    if (old) entityGroup.remove(old)
+    const oldChat = entityGroup.getObjectByName('chatBubble')
+    if (oldChat) entityGroup.remove(oldChat)
+
+    // Name + hearts — single combined sprite, no fade
+    const infoCanvas = createPlayerInfoCanvas(username, health, null, fontFamily)
+    const tex = new THREE.CanvasTexture(infoCanvas)
+    const mat = new THREE.SpriteMaterial({ map: tex, depthTest: false })
+    const sprite = new THREE.Sprite(mat)
+    sprite.renderOrder = 1000
+    sprite.name = 'playerInfo'
+
+    const scale = 0.005
+    const spriteW = infoCanvas.width * scale
+    const spriteH = infoCanvas.height * scale
+    sprite.scale.set(spriteW, spriteH, 1)
+    sprite.position.y = 2.2 + spriteH / 2
+    entityGroup.add(sprite)
+
+    // Chat bubble — separate sprite with distance fade
+    if (chatLine) {
+      const chatCanvas = createChatBubbleCanvas(chatLine, fontFamily)
+      const chatTex = new THREE.CanvasTexture(chatCanvas)
+      const chatMat = new THREE.SpriteMaterial({ map: chatTex, depthTest: false, transparent: true })
+      const chatSprite = new THREE.Sprite(chatMat)
+      chatSprite.renderOrder = 1000
+      chatSprite.name = 'chatBubble'
+      const chatW = chatCanvas.width * scale
+      const chatH = chatCanvas.height * scale
+      chatSprite.scale.set(chatW, chatH, 1)
+      chatSprite.position.y = 2.2 + spriteH + chatH / 2 + 0.05
+
+      const fadeStart = 8
+      const fadeEnd = 25
+      chatSprite.onBeforeRender = (_renderer, _scene, camera) => {
+        const dist = camera.position.distanceTo(entityGroup.position)
+        chatMat.opacity = 1 - Math.min(1, Math.max(0, (dist - fadeStart) / (fadeEnd - fadeStart)))
+      }
+      entityGroup.add(chatSprite)
+    }
+  }
+
   playerPerAnimation = {} as Record<number, string>
   onRemoveEntity (entity: import('prismarine-entity').Entity) {
     this.loadedSkinEntityIds.delete(entity.id)
+    this.playerData.delete(entity.username ?? '')
+    const group = this.entities[entity.id]
+    if (group?.['outlineCleanup']) group['outlineCleanup']()
   }
 
   updateMap (mapNumber: string | number, data: string) {
@@ -1374,6 +1738,12 @@ function addArmorModel (worldRenderer: WorldRendererThree, entityMesh: THREE.Obj
   group.add(skeletonHelper)
 
   entityMesh.add(mesh)
+
+  // If this entity has the through-wall outline, push the new armor mesh into the
+  // transparent pass at SKIN_RENDER_ORDER so it doesn't interfere with the outline.
+  if (entityMesh['outlinePatchObject']) {
+    entityMesh['outlinePatchObject'](mesh)
+  }
 }
 
 function removeArmorModel (entityMesh: THREE.Object3D, slotType: string) {
