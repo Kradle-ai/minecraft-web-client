@@ -114,7 +114,8 @@ const defaultOptions = {
       _experimentalSmoothChunkLoading: true,
       _renderByChunks: false
     }
-  }
+  },
+  xrayMode: true,
 }
 
 function getDefaultTouchControlsPositions () {

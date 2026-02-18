@@ -86,12 +86,97 @@ function poseToEuler (pose: any, defaultValue?: THREE.Euler) {
   return defaultValue ?? new THREE.Euler()
 }
 
+// --- Player outline (through-walls ghost effect) ---
+
+const OUTLINE_RENDER_ORDER = 502
+
+const SKIN_RENDER_ORDER = OUTLINE_RENDER_ORDER + 1
+
+function addPlayerOutline (playerObject: PlayerObjectType): { cleanup: () => void; patchObject: (obj: THREE.Object3D) => void } {
+  // The core problem: outline GreaterDepth was comparing against the player's own skin
+  // already written in the opaque depth buffer, causing it to show at visible player pixels.
+  //
+  // Fix: move ALL skin/armor meshes into the transparent pass at SKIN_RENDER_ORDER (503).
+  // Render order in the transparent pass:
+  //   1. Outline meshes (502): GreaterDepth vs world-only depth (opaque pass wrote chunks,
+  //      no player skin yet) → outline only appears through walls, no inter-body bleed
+  //   2. Skin/armor meshes (503): normal LessEqual depth test → covers outline where visible
+  type MeshState = { mesh: THREE.Mesh; origRenderOrder: number }
+  type MatState = { mat: THREE.Material; wasTransparent: boolean }
+  const meshStates: MeshState[] = []
+  const matStates: MatState[] = []
+  const patchedMats = new WeakSet<THREE.Material>()
+
+  // Patch a single object (and its descendants): move into transparent pass at SKIN_RENDER_ORDER.
+  // Called once for the player skin at outline creation, and again for each armor piece as it loads.
+  const patchObject = (root: THREE.Object3D) => {
+    root.traverse((obj: THREE.Object3D) => {
+      if (!(obj instanceof THREE.Mesh)) return
+      meshStates.push({ mesh: obj, origRenderOrder: obj.renderOrder })
+      obj.renderOrder = SKIN_RENDER_ORDER
+      const mats = Array.isArray(obj.material) ? obj.material : [obj.material]
+      for (const mat of mats as THREE.Material[]) {
+        if (patchedMats.has(mat)) continue
+        patchedMats.add(mat)
+        matStates.push({ mat, wasTransparent: mat.transparent })
+        mat.transparent = true
+        mat.needsUpdate = true
+      }
+    })
+  }
+
+  patchObject(playerObject)
+
+  // Solid white outline meshes — GreaterDepth only passes where the mesh is behind
+  // world geometry (walls). Arms/legs use scaled BoxGeometry so copy position/rotation/scale.
+  const outlineMat = new THREE.MeshBasicMaterial({
+    color: 0xFF_FF_FF,
+    depthTest: true,
+    depthWrite: false,
+    depthFunc: THREE.GreaterDepth,
+    transparent: true,
+    opacity: 0.5,
+  })
+
+  const addedMeshes: THREE.Mesh[] = []
+  const skin = playerObject.skin as any
+  const bodyParts = [skin.head, skin.body, skin.rightArm, skin.leftArm, skin.rightLeg, skin.leftLeg]
+
+  for (const part of bodyParts) {
+    if (!part?.outerLayer) continue
+    part.outerLayer.traverse((obj: THREE.Object3D) => {
+      if (!(obj instanceof THREE.Mesh) || !obj.parent) return
+      const outlineMesh = new THREE.Mesh(obj.geometry, outlineMat)
+      outlineMesh.renderOrder = OUTLINE_RENDER_ORDER
+      outlineMesh.position.copy(obj.position)
+      outlineMesh.rotation.copy(obj.rotation)
+      outlineMesh.scale.copy(obj.scale)
+      obj.parent.add(outlineMesh)
+      addedMeshes.push(outlineMesh)
+    })
+  }
+
+  return {
+    patchObject,
+    cleanup () {
+      for (const { mesh, origRenderOrder } of meshStates) {
+        mesh.renderOrder = origRenderOrder
+      }
+      for (const { mat, wasTransparent } of matStates) {
+        mat.transparent = wasTransparent
+        mat.needsUpdate = true
+      }
+      for (const m of addedMeshes) m.parent?.remove(m)
+      outlineMat.dispose()
+    },
+  }
+}
+
 function createPlayerInfoCanvas (username: string, health: number, chatLine: string | null, fontFamily: string): HTMLCanvasElement {
   const gap = 6
   const sections: HTMLCanvasElement[] = []
   if (chatLine) sections.push(createChatBubbleCanvas(chatLine, fontFamily))
-  sections.push(getUsernameTexture({ username }, { fontFamily }))
-  sections.push(createHealthBarCanvas(health, fontFamily))
+  sections.push(getUsernameTexture({ username }, { fontFamily }), createHealthBarCanvas(health, fontFamily))
 
   const totalWidth = Math.max(...sections.map(c => c.width))
   const totalHeight = sections.reduce((sum, c) => sum + c.height, 0) + gap * (sections.length - 1)
@@ -166,9 +251,9 @@ function createChatBubbleCanvas (text: string, fontFamily: string): HTMLCanvasEl
 
   // Text — each line centered
   ctx.fillStyle = 'white'
-  for (let i = 0; i < lines.length; i++) {
-    const lineWidth = ctx.measureText(lines[i]).width
-    ctx.fillText(lines[i], (canvas.width - lineWidth) / 2, padding + fontSize * 0.8 + i * lineHeight)
+  for (const [i, line] of lines.entries()) {
+    const lineWidth = ctx.measureText(line).width
+    ctx.fillText(line, (canvas.width - lineWidth) / 2, padding + fontSize * 0.8 + i * lineHeight)
   }
 
   return canvas
@@ -358,6 +443,7 @@ export class Entities {
   onSkinUpdate: () => void
   clock = new THREE.Clock()
   currentlyRendering = true
+  private currentXrayMode: boolean | undefined = undefined
   private lastEntityPositions = {} as Record<string, { x: number, z: number }>
   private entityAnimationStates = {} as Record<string, string>
   cachedMapsImages = {} as Record<number, string>
@@ -433,6 +519,12 @@ export class Entities {
       this.setRendering(renderEntitiesConfig)
     }
 
+    const { xrayMode } = this.worldRenderer.worldRendererConfig
+    if (xrayMode !== this.currentXrayMode) {
+      this.currentXrayMode = xrayMode
+      this.updateAllPlayerOutlines(xrayMode)
+    }
+
     const dt = this.clock.getDelta()
     const WALKING_SPEED = 0.1
     const SPRINTING_SPEED = 3.5
@@ -469,6 +561,32 @@ export class Entities {
 
       // Always make entities visible (fixes issue with entities not appearing until interacted with)
       entity.visible = true
+
+
+    }
+  }
+
+  private updateAllPlayerOutlines (xrayMode: boolean) {
+    for (const group of Object.values(this.entities)) {
+      const username = group['playerUsername'] as string | undefined
+      if (!username || username.toLowerCase() === 'watcher') continue
+      if (xrayMode && !group['outlineCleanup']) {
+        const playerObject = group['playerObject'] as PlayerObjectType | undefined
+        if (!playerObject) continue
+        const outline = addPlayerOutline(playerObject)
+        group['outlineCleanup'] = outline.cleanup
+        group['outlinePatchObject'] = outline.patchObject
+        // Patch any armor already on the entity
+        for (const child of group.children) {
+          if (typeof child.name === 'string' && child.name.startsWith('geometry_armor_')) {
+            outline.patchObject(child)
+          }
+        }
+      } else if (!xrayMode && group['outlineCleanup']) {
+        group['outlineCleanup']()
+        group['outlineCleanup'] = undefined
+        group['outlinePatchObject'] = undefined
+      }
     }
   }
 
@@ -889,6 +1007,13 @@ export class Entities {
 
         // Name is rendered in the combined playerInfo sprite (see updatePlayerNametagSprites)
 
+        // Through-wall ghost outline for non-watcher players (only when xrayMode is enabled)
+        if (this.worldRenderer.worldRendererConfig.xrayMode && entity.username && entity.username.toLowerCase() !== 'watcher') {
+          const outline = addPlayerOutline(playerObject)
+          group['outlineCleanup'] = outline.cleanup
+          group['outlinePatchObject'] = outline.patchObject
+        }
+
         //@ts-expect-error
         group.playerObject = playerObject
         group['playerUsername'] = entity.username
@@ -1227,11 +1352,14 @@ export class Entities {
     const health = data?.health ?? 20
     const { fontFamily } = this.entitiesOptions
 
-    // Remove old combined sprite
+    // Remove old sprites
     const old = entityGroup.getObjectByName('playerInfo')
     if (old) entityGroup.remove(old)
+    const oldChat = entityGroup.getObjectByName('chatBubble')
+    if (oldChat) entityGroup.remove(oldChat)
 
-    const infoCanvas = createPlayerInfoCanvas(username, health, chatLine, fontFamily)
+    // Name + hearts — single combined sprite, no fade
+    const infoCanvas = createPlayerInfoCanvas(username, health, null, fontFamily)
     const tex = new THREE.CanvasTexture(infoCanvas)
     const mat = new THREE.SpriteMaterial({ map: tex, depthTest: false })
     const sprite = new THREE.Sprite(mat)
@@ -1242,17 +1370,38 @@ export class Entities {
     const spriteW = infoCanvas.width * scale
     const spriteH = infoCanvas.height * scale
     sprite.scale.set(spriteW, spriteH, 1)
-
-    // Anchor bottom of sprite (health bar) at y=2.2
     sprite.position.y = 2.2 + spriteH / 2
-
     entityGroup.add(sprite)
+
+    // Chat bubble — separate sprite with distance fade
+    if (chatLine) {
+      const chatCanvas = createChatBubbleCanvas(chatLine, fontFamily)
+      const chatTex = new THREE.CanvasTexture(chatCanvas)
+      const chatMat = new THREE.SpriteMaterial({ map: chatTex, depthTest: false, transparent: true })
+      const chatSprite = new THREE.Sprite(chatMat)
+      chatSprite.renderOrder = 1000
+      chatSprite.name = 'chatBubble'
+      const chatW = chatCanvas.width * scale
+      const chatH = chatCanvas.height * scale
+      chatSprite.scale.set(chatW, chatH, 1)
+      chatSprite.position.y = 2.2 + spriteH + chatH / 2 + 0.05
+
+      const fadeStart = 8
+      const fadeEnd = 25
+      chatSprite.onBeforeRender = (_renderer, _scene, camera) => {
+        const dist = camera.position.distanceTo(entityGroup.position)
+        chatMat.opacity = 1 - Math.min(1, Math.max(0, (dist - fadeStart) / (fadeEnd - fadeStart)))
+      }
+      entityGroup.add(chatSprite)
+    }
   }
 
   playerPerAnimation = {} as Record<number, string>
   onRemoveEntity (entity: import('prismarine-entity').Entity) {
     this.loadedSkinEntityIds.delete(entity.id)
     this.playerData.delete(entity.username ?? '')
+    const group = this.entities[entity.id]
+    if (group?.['outlineCleanup']) group['outlineCleanup']()
   }
 
   updateMap (mapNumber: string | number, data: string) {
@@ -1563,6 +1712,12 @@ function addArmorModel (worldRenderer: WorldRendererThree, entityMesh: THREE.Obj
   group.add(skeletonHelper)
 
   entityMesh.add(mesh)
+
+  // If this entity has the through-wall outline, push the new armor mesh into the
+  // transparent pass at SKIN_RENDER_ORDER so it doesn't interfere with the outline.
+  if (entityMesh['outlinePatchObject']) {
+    entityMesh['outlinePatchObject'](mesh)
+  }
 }
 
 function removeArmorModel (entityMesh: THREE.Object3D, slotType: string) {

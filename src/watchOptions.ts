@@ -107,6 +107,10 @@ export const watchOptionsAfterViewerInit = () => {
   })
 
   watchValue(options, o => {
+    appViewer.inWorldRenderingConfig.xrayMode = o.xrayMode
+  })
+
+  watchValue(options, o => {
     // appViewer.inWorldRenderingConfig.neighborChunkUpdates = o.neighborChunkUpdates
   })
 }

@@ -498,6 +498,11 @@ export class WorldRendererThree extends WorldRendererCommon {
 
     this.entities.render()
 
+    // holdingBlock.render() sets autoClear=false and never resets it. Reset here so
+    // the main scene render always clears all buffers (including stencil for the
+    // player ghost outline) at the start of each frame.
+    this.renderer.autoClear = true
+
     // eslint-disable-next-line @typescript-eslint/non-nullable-type-assertion-style
     const cam = this.camera instanceof THREE.Group ? this.camera.children.find(child => child instanceof THREE.PerspectiveCamera) as THREE.PerspectiveCamera : this.camera
     this.renderer.render(this.scene, cam)

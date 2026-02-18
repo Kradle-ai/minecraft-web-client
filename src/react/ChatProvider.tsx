@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSnapshot } from 'valtio'
+import { getThreeJsRendererMethods } from 'renderer/viewer/three/threeJsMethods'
 import { appQueryParams } from '../appParams'
 import { formatMessage } from '../chatUtils'
 import { addCanvasChatMessage, clearCanvasChatMessages } from '../canvasChatMessages'
@@ -14,7 +15,6 @@ import { hideNotification, showNotification } from './NotificationProvider'
 import { updateLoadedServerData } from './serversStorage'
 import { lastConnectOptions } from './AppStatusProvider'
 import { packetsReplayState } from './state/packetsReplayState'
-import { getThreeJsRendererMethods } from 'renderer/viewer/three/threeJsMethods'
 
 export type ChatMessageType = 'chat' | 'death' | 'join' | 'leave' | 'teleport' | 'title' | 'subtitle' | 'announcement' | 'kradle_command'
 
