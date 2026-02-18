@@ -9,6 +9,9 @@ import { audioTrackScheduler } from './sounds/audioTrackScheduler'
 import { appQueryParams } from './appParams'
 import { packetsReplayState } from './react/state/packetsReplayState'
 
+const DEBUG = false
+const log = (...args: any[]) => { if (DEBUG) log(...args) }
+
 type DistributiveOmit<T, K extends keyof any> = T extends any ? Omit<T, K> : never
 
 type IFrameSendablePayload =
@@ -191,7 +194,7 @@ registerPauseHotkey()
 export function setupIframeComms () {
   // Prevent duplicate setup on hot-reload
   if (iframeCommsSetup) {
-    console.log('[iframe-rpc] Iframe comms already setup, skipping')
+    log('[iframe-rpc] Iframe comms already setup, skipping')
     return
   }
   iframeCommsSetup = true
@@ -200,7 +203,7 @@ export function setupIframeComms () {
   window.addEventListener('message', (event) => {
     const { data } = event
     if (data.source === 'kradle-frontend') {
-      console.log('[iframe-rpc] [minecraft-web-client] Received message', data)
+      log('[iframe-rpc] [minecraft-web-client] Received message', data)
       customEvents.emit(`kradle:${data.action as ReceivableActions}`, data)
     }
   })
@@ -248,7 +251,7 @@ export function setupIframeComms () {
     })
   })
   customEvents.on('kradle:sendRecordingMessageList', (data) => {
-    console.log('[iframe-rpc] Recording message list received from parent', data)
+    log('[iframe-rpc] Recording message list received from parent', data)
     if (data?.data && Array.isArray(data.data)) {
       void audioTrackScheduler.loadTracks(data.data)
     }
@@ -261,7 +264,7 @@ export function setupIframeComms () {
       return
     }
 
-    console.log('[packet-monitor] Command received:', command)
+    log('[packet-monitor] Command received:', command)
 
     // Check if this is a locally-handled replay command (for serverless replay mode)
     const isLocalReplayCommand =
@@ -280,7 +283,7 @@ export function setupIframeComms () {
     // This avoids BigInt errors in serverless replay mode
     if (!isLocalReplayCommand) {
       const formattedCommand = `/${command.replace(/^\//, '')}`
-      console.log('[packet-monitor] Sending command to bot:', formattedCommand)
+      log('[packet-monitor] Sending command to bot:', formattedCommand)
       bot.chat(formattedCommand)
     }
 
@@ -295,7 +298,7 @@ export function setupIframeComms () {
         // Set seek target for serverless packet replay
         packetsReplayState.seekTargetMs = targetMs
         reportCameraState()
-        console.log('[iframe] Seeking to', targetSeconds, 'seconds (', targetMs, 'ms)')
+        log('[iframe] Seeking to', targetSeconds, 'seconds (', targetMs, 'ms)')
       }
 
       // Wait a bit for the seek to complete and entities to spawn
@@ -381,11 +384,11 @@ export function setupIframeComms () {
       const speed = parseFloat(speedMatch[1])
       packetsReplayState.speed = speed
       reportCameraState()
-      console.log('[iframe] Set replay speed to', speed)
+      log('[iframe] Set replay speed to', speed)
     }
 
     if (command === 'replay recording toggle') {
-      console.log('[iframe] Received replay recording toggle command')
+      log('[iframe] Received replay recording toggle command')
       if (appQueryParams.allowRecording !== 'true') {
         document.exitPointerLock?.()
         sendMessageToKradle({ action: 'unauthorized', feature: 'recording' })
@@ -395,7 +398,7 @@ export function setupIframeComms () {
     }
 
     if (command === 'replay mic toggle') {
-      console.log('[iframe] Received replay mic toggle command')
+      log('[iframe] Received replay mic toggle command')
       if (appQueryParams.allowRecording !== 'true') {
         document.exitPointerLock?.()
         sendMessageToKradle({ action: 'unauthorized', feature: 'voice' })
@@ -405,7 +408,7 @@ export function setupIframeComms () {
     }
 
     if (command === 'replay camera toggle') {
-      console.log('[iframe] Received replay camera toggle command')
+      log('[iframe] Received replay camera toggle command')
       if (appQueryParams.allowRecording !== 'true') {
         document.exitPointerLock?.()
         sendMessageToKradle({ action: 'unauthorized', feature: 'camera' })
@@ -418,7 +421,7 @@ export function setupIframeComms () {
 
   // Handle reconnect command from parent app
   customEvents.on('kradle:reconnect', (data) => {
-    console.log('[iframe-rpc] Reconnect command received from parent', data)
+    log('[iframe-rpc] Reconnect command received from parent', data)
     if (window?.lastConnectOptions?.value) {
       // Use existing reconnect functionality
       window.dispatchEvent(
@@ -440,7 +443,7 @@ export function setupIframeComms () {
 
   // Handle agent skin data from parent app
   customEvents.on('kradle:setAgentSkins', (data) => {
-    console.log('[iframe-rpc] Agent skin data received from parent', data)
+    log('[iframe-rpc] Agent skin data received from parent', data)
     // Store agent skin data globally for use by entities
     if (window.agentSkinMap) {
       window.agentSkinMap.clear()
@@ -458,7 +461,7 @@ export function setupIframeComms () {
     }
 
     // Emit event to notify that agent skins have been updated
-    console.log('[iframe-rpc] Emitting agentSkinsUpdated event, map size:', window.agentSkinMap.size)
+    log('[iframe-rpc] Emitting agentSkinsUpdated event, map size:', window.agentSkinMap.size)
     customEvents.emit('agentSkinsUpdated')
   })
 
@@ -487,7 +490,7 @@ export function setupIframeComms () {
         imageData,
       })
 
-      console.log('[iframe-rpc] Screenshot captured and sent to parent')
+      log('[iframe-rpc] Screenshot captured and sent to parent')
     } catch (error) {
       console.error('[iframe-rpc] Failed to capture screenshot:', error)
     }
@@ -503,7 +506,7 @@ export function setupIframeComms () {
 
   // Handle recording complete - send video blob to parent
   customEvents.on('recordingComplete', (data: { blob: Blob; filename: string }) => {
-    console.log('[iframe-rpc] Recording complete, sending blob to parent, size:', data.blob.size)
+    log('[iframe-rpc] Recording complete, sending blob to parent, size:', data.blob.size)
     sendMessageToKradle({
       action: 'recordingData',
       blob: data.blob,
@@ -514,12 +517,12 @@ export function setupIframeComms () {
   // Setup packet monitoring for replay information
   function setupPacketMonitoring () {
     if (!bot || !bot._client) {
-      console.log('[packet-monitor] Bot not ready yet, retrying in 1s')
+      log('[packet-monitor] Bot not ready yet, retrying in 1s')
       setTimeout(setupPacketMonitoring, 1000)
       return
     }
 
-    console.log(
+    log(
       '[packet-monitor] Setting up packet monitoring for replay data'
     )
 
@@ -532,7 +535,7 @@ export function setupIframeComms () {
     // Note: storedIsRecording, storedIsMicEnabled, storedIsCameraEnabled are module-level variables
 
     customEvents.on('recordingUpdate', (data) => {
-      console.log('[packet-monitor] Custom payload received:', data)
+      log('[packet-monitor] Custom payload received:', data)
       if (data.isRecording !== undefined) {
         storedIsRecording = data.isRecording
       }
@@ -587,7 +590,7 @@ export function setupIframeComms () {
             }
           }
         } catch (e) {
-          console.log('[replay-parse-error]', e.message)
+          log('[replay-parse-error]', e.message)
         }
       }
 
@@ -608,7 +611,7 @@ export function setupIframeComms () {
         isCameraEnabled: storedIsCameraEnabled,
       }
 
-      console.log('[boss-monitor] Replay status:', replayStatus)
+      log('[boss-monitor] Replay status:', replayStatus)
 
       // Only send if data has changed and we have minimum required data
       const statusChanged =
@@ -627,7 +630,7 @@ export function setupIframeComms () {
   // Start monitoring when bot is ready
   if (window?.customEvents) {
     window.customEvents.on('mineflayerBotCreated', () => {
-      console.log('[packet-monitor] Bot created, setting up packet monitoring')
+      log('[packet-monitor] Bot created, setting up packet monitoring')
       setTimeout(setupPacketMonitoring, 1000) // Give bot time to initialize
     })
   }

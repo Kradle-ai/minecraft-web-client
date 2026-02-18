@@ -1,6 +1,7 @@
 import { options } from './optionsStorage'
 
 //@ts-check
+const DEBUG = false
 const { EventEmitter } = require('events')
 const debug = require('debug')('minecraft-protocol')
 const states = require('minecraft-protocol/src/states')
@@ -104,10 +105,9 @@ class CustomChannelClient extends EventEmitter {
   }
 
   setSerializer(state) {
-    console.log('[CustomClient] setSerializer called, isServer:', this.isServer, 'state:', state)
+    if (DEBUG) console.log('[CustomClient] setSerializer called, isServer:', this.isServer, 'state:', state)
     customCommunication.receiverSetup.call(this, (/** @type {{name, params, state?}} */parsed) => {
-      // Debug: Log ALL packets for troubleshooting
-      if (parsed.name.includes('chat')) {
+      if (DEBUG && parsed.name.includes('chat')) {
         console.log('[CustomClient] RECEIVED packet:', parsed.name, 'isServer:', this.isServer)
         console.log('[CustomClient] params keys:', Object.keys(parsed.params || {}))
         if (parsed.params?.timestamp !== undefined) {
@@ -127,8 +127,7 @@ class CustomChannelClient extends EventEmitter {
       // 2. But ensure timestamp/salt are BigInt (minecraft-protocol's chat.js expects these)
       const safeParams = processPacketData(parsed.params)
 
-      // Debug: Log chat packets after processing
-      if (parsed.name.includes('chat')) {
+      if (DEBUG && parsed.name.includes('chat')) {
         console.log('[CustomClient] AFTER processPacketData:', parsed.name)
         if (safeParams?.timestamp !== undefined) {
           console.log('[CustomClient] processed timestamp:', typeof safeParams.timestamp, safeParams.timestamp)

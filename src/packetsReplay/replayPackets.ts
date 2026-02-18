@@ -14,6 +14,9 @@ import { setLoadingScreenStatus } from '../appStatus'
 import { appQueryParams } from '../appParams'
 import { clearKradleverseChat, setSkipChatMessages } from '../react/ChatProvider'
 
+const DEBUG = false
+const log = (...args: any[]) => { if (DEBUG) console.log(...args) }
+
 export const VALID_REPLAY_EXTENSIONS = [
   PACKETS_REPLAY_FILE_EXTENSION,
   WORLD_STATE_FILE_EXTENSION,
@@ -58,7 +61,7 @@ export async function openParsedReplay (
   filename = 'unnamed',
   filesize?: number
 ) {
-  console.log('openParsedReplay - received', packets.length, 'packets, version:', header.minecraftVersion)
+  log('openParsedReplay - received', packets.length, 'packets, version:', header.minecraftVersion)
 
   packetsReplayState.replayName = `${filename} (${getFixedFilesize(filesize ?? packets.length * 100)})`
   packetsReplayState.isPlaying = false
@@ -87,7 +90,7 @@ export function startLocalReplayServer (contentsOrPackets: string | ParsedReplay
     header = parsed.header
   }
 
-  console.log('startLocalReplayServer - version:', header.minecraftVersion, 'packets:', packets.length)
+  log('startLocalReplayServer - version:', header.minecraftVersion, 'packets:', packets.length)
 
   packetsReplayState.packetsPlayback = []
   packetsReplayState.isOpen = true
@@ -135,10 +138,10 @@ export function startLocalReplayServer (contentsOrPackets: string | ParsedReplay
   const isMcprReplay = 'mcprMetadata' in header
   const eventToWaitFor = (data.supportFeature('hasConfigurationState') && !isMcprReplay) ? 'playerJoin' : 'login'
 
-  console.log(`Replay server waiting for '${eventToWaitFor}' event`)
+  log(`Replay server waiting for '${eventToWaitFor}' event`)
 
   server.on(eventToWaitFor as any, async client => {
-    console.log(`Replay server received '${eventToWaitFor}' event`)
+    log(`Replay server received '${eventToWaitFor}' event`)
     await mainPacketsReplayer(client, packets, isMcprReplay, header)
   })
 
@@ -242,7 +245,7 @@ function patchWorldForReplay (bot: typeof window.bot) {
     }
   }
 
-  console.log('World patched for replay mode')
+  log('World patched for replay mode')
 }
 
 
@@ -265,7 +268,7 @@ const mainPacketsReplayer = async (
         }
       }
     }
-    console.log('MCPR: Found', playerUuids.size, 'player UUIDs:', [...playerUuids])
+    log('MCPR: Found', playerUuids.size, 'player UUIDs:', [...playerUuids])
   }
 
   // Get player entity type ID for this version
@@ -273,7 +276,7 @@ const mainPacketsReplayer = async (
   try {
     const mcData = MinecraftData(header?.minecraftVersion || '1.20.4')
     playerEntityTypeId = mcData.entitiesByName?.player?.id ?? 122
-    console.log('Player entity type ID:', playerEntityTypeId)
+    log('Player entity type ID:', playerEntityTypeId)
   } catch (e) {
     console.warn('Could not get player entity type ID, using default:', playerEntityTypeId)
   }
@@ -342,9 +345,9 @@ const mainPacketsReplayer = async (
 
     // Debug: Log chat packets
     if (name.includes('chat')) {
-      console.log('[writePacket] Writing chat packet:', name)
-      console.log('[writePacket] timestamp:', typeof data?.timestamp, data?.timestamp)
-      console.log('[writePacket] salt:', typeof data?.salt, data?.salt)
+      log('[writePacket] Writing chat packet:', name)
+      log('[writePacket] timestamp:', typeof data?.timestamp, data?.timestamp)
+      log('[writePacket] salt:', typeof data?.salt, data?.salt)
     }
 
     // Handle MCPR replay specific packet modifications
@@ -352,26 +355,26 @@ const mainPacketsReplayer = async (
       // Change login packet entity ID to avoid conflict with player entities
       // This allows other players (who may have the same entity ID) to be rendered
       if (name === 'login' && typeof data.entityId === 'number') {
-        console.log('MCPR: Changing login entityId from', data.entityId, 'to', MCPR_VIEWER_ENTITY_ID)
+        log('MCPR: Changing login entityId from', data.entityId, 'to', MCPR_VIEWER_ENTITY_ID)
         data = { ...data, entityId: MCPR_VIEWER_ENTITY_ID }
       }
 
       // Convert entities with player UUIDs to actual player entities
       if (name === 'spawn_entity' && data.objectUUID && playerUuids.has(data.objectUUID)) {
-        console.log('Converting entity', data.entityId, 'to player (UUID:', data.objectUUID, ')')
+        log('Converting entity', data.entityId, 'to player (UUID:', data.objectUUID, ')')
         data = { ...data, type: playerEntityTypeId }
       }
 
       // Debug: log block_change packets
       if (name === 'block_change') {
-        console.log('MCPR block_change:', data.location, 'type:', data.type)
+        log('MCPR block_change:', data.location, 'type:', data.type)
       }
     }
     client.write(name, data)
   }
 
   // Wait for window.bot to be available
-  console.log('Waiting for window.bot...')
+  log('Waiting for window.bot...')
   let { bot } = window
   let waitAttempts = 0
   while (!bot && waitAttempts < 200) {
@@ -383,7 +386,7 @@ const mainPacketsReplayer = async (
   if (!bot) {
     throw new Error(`Bot not available after ${waitAttempts * 25}ms`)
   }
-  console.log('window.bot available after', waitAttempts * 25, 'ms')
+  log('window.bot available after', waitAttempts * 25, 'ms')
 
   // Log packet state distribution
   // eslint-disable-next-line unicorn/no-array-reduce
@@ -391,21 +394,21 @@ const mainPacketsReplayer = async (
     acc[p.state] = (acc[p.state] || 0) + 1
     return acc
   }, {} as Record<string, number>) // eslint-disable-line @typescript-eslint/prefer-reduce-type-parameter
-  console.log('Packet state distribution:', stateDistribution)
+  log('Packet state distribution:', stateDistribution)
 
   // For MCPR replays, process configuration packets to set up registries
   if (isMcprReplay) {
     const configPackets = packets.filter(p => p.state === 'configuration')
-    console.log('Configuration packets:', configPackets.length)
+    log('Configuration packets:', configPackets.length)
 
     // Find and log registry_data packets
     const registryPackets = configPackets.filter(p => p.name === 'registry_data')
-    console.log('registry_data packets:', registryPackets.length)
+    log('registry_data packets:', registryPackets.length)
 
     // Process registry_data packets to populate dimension registry
     for (const packet of registryPackets) {
       if (packet.params) {
-        console.log('Processing registry_data packet:', Object.keys(packet.params))
+        log('Processing registry_data packet:', Object.keys(packet.params))
         try {
           // Emit the registry_data packet to populate bot.registry
           bot._client.emit('registry_data', packet.params)
@@ -416,17 +419,17 @@ const mainPacketsReplayer = async (
     }
 
     // Check if dimension registry was populated
-    console.log('Dimension registry after config packets:', Object.keys(bot.registry?.dimensionsByName || {}))
+    log('Dimension registry after config packets:', Object.keys(bot.registry?.dimensionsByName || {}))
   }
 
   // Filter to play-state packets only
   const playPackets = packets.filter(p => p.state === 'play')
-  console.log('Play packets:', playPackets.length, 'of', packets.length)
+  log('Play packets:', playPackets.length, 'of', packets.length)
 
   // Find login packet index
   const loginPacketIndex = playPackets.findIndex(p => p.name === 'login')
   const hasLoginPacket = loginPacketIndex !== -1
-  console.log('Login packet at index:', loginPacketIndex)
+  log('Login packet at index:', loginPacketIndex)
 
   // Set up error handling
   let lastSentPacket: { name: string, params: any } | null = null
@@ -455,7 +458,7 @@ const mainPacketsReplayer = async (
 
   // Initialize bot.world for MCPR replay
   if (isMcprReplay) {
-    console.log('Setting up world for MCPR replay')
+    log('Setting up world for MCPR replay')
 
     if (bot.registry && !bot.registry.dimensionsByName) {
       bot.registry.dimensionsByName = {}
@@ -466,7 +469,7 @@ const mainPacketsReplayer = async (
     const versionStr = header?.minecraftVersion || bot.version || '1.20.4'
     const majorMinor = versionStr.split('.').slice(0, 2).map(Number)
     const is118Plus = majorMinor[0] >= 1 && majorMinor[1] >= 18
-    console.log('Version check:', versionStr, 'majorMinor:', majorMinor, 'is118Plus:', is118Plus)
+    log('Version check:', versionStr, 'majorMinor:', majorMinor, 'is118Plus:', is118Plus)
     if (is118Plus) {
       // 1.18+ uses minY=-64, height=384
       if (!bot.game) {
@@ -474,16 +477,16 @@ const mainPacketsReplayer = async (
       }
       bot.game.minY = -64
       bot.game.height = 384
-      console.log('Set 1.18+ world dimensions: minY=-64, height=384')
+      log('Set 1.18+ world dimensions: minY=-64, height=384')
     }
 
     if (!bot.world) {
-      console.log('Creating new bot.world for version:', bot.version)
+      log('Creating new bot.world for version:', bot.version)
       try {
         const World = require('prismarine-world')(bot.version)
         // IMPORTANT: Must use .sync to get the sync world interface that blocks.js expects
         bot.world = new World(null, bot.storageBuilder?.(bot.version, bot.worldFolder)).sync
-        console.log('bot.world created successfully (sync interface)')
+        log('bot.world created successfully (sync interface)')
 
         // CRITICAL: Set up event forwarding from bot.world to bot
         // Mineflayer's blocks plugin normally does this, but since we created a new world,
@@ -492,7 +495,7 @@ const mainPacketsReplayer = async (
         for (const event of forwardedEvents) {
           bot.world.on(event, (...args: any[]) => bot.emit(event as any, ...args))
         }
-        console.log('Set up event forwarding from bot.world to bot')
+        log('Set up event forwarding from bot.world to bot')
       } catch (err) {
         console.error('Failed to create bot.world:', err)
       }
@@ -502,24 +505,24 @@ const mainPacketsReplayer = async (
     // where the actual chunk data is stored by blocks.js
     if (bot.world?.async?.columns) {
       bot.world.columns = bot.world.async.columns
-      console.log('Linked bot.world.columns to async.columns')
+      log('Linked bot.world.columns to async.columns')
     }
-    console.log('World setup complete - bot.world:', !!bot.world, 'columns:', Object.keys(bot.world?.columns || {}).length)
+    log('World setup complete - bot.world:', !!bot.world, 'columns:', Object.keys(bot.world?.columns || {}).length)
 
     // Load chunks from region files if provided
     // TODO: Temporarily disabled - chunks from region files don't have all required methods
     // (getProperties, setBlockEntity) and conflict with map_chunk packets
     const worldRegionPaths = header?.worldRegionPaths as string[] | undefined
     if (worldRegionPaths?.length && bot.world) {
-      console.log('Region files available:', worldRegionPaths.length, '- chunk pre-loading disabled for now')
+      log('Region files available:', worldRegionPaths.length, '- chunk pre-loading disabled for now')
       // try {
       //   const chunksLoaded = await loadChunksFromRegionFiles(
       //     worldRegionPaths,
       //     bot.world,
       //     bot.version,
-      //     (msg) => console.log(msg)
+      //     (msg) => log(msg)
       //   )
-      //   console.log('Loaded', chunksLoaded, 'chunks from region files')
+      //   log('Loaded', chunksLoaded, 'chunks from region files')
       // } catch (err) {
       //   console.error('Failed to load chunks from region files:', err)
       // }
@@ -528,15 +531,15 @@ const mainPacketsReplayer = async (
 
   // Patch world methods to handle missing chunks gracefully
   patchWorldForReplay(bot)
-  console.log('After patch - bot.world:', !!bot.world)
+  log('After patch - bot.world:', !!bot.world)
 
   // Send login packet if present to initialize game state
   let startPacketIndex = 0
   if (hasLoginPacket) {
     const loginPacket = playPackets[loginPacketIndex]
     if (loginPacket?.params) {
-      console.log('Sending login packet')
-      console.log('bot.game BEFORE login:', { minY: bot.game?.minY, height: bot.game?.height })
+      log('Sending login packet')
+      log('bot.game BEFORE login:', { minY: bot.game?.minY, height: bot.game?.height })
       try {
         writePacket(loginPacket.name, loginPacket.params)
       } catch (err) {
@@ -544,11 +547,11 @@ const mainPacketsReplayer = async (
       }
       // Small delay to let login packet process synchronously
       await new Promise(resolve => setTimeout(resolve, 1)) // eslint-disable-line no-promise-executor-return
-      console.log('bot.game AFTER login (1ms):', { minY: bot.game?.minY, height: bot.game?.height, dimension: bot.game?.dimension })
+      log('bot.game AFTER login (1ms):', { minY: bot.game?.minY, height: bot.game?.height, dimension: bot.game?.dimension })
 
       // Check if dimension registry has data
       const dimData = bot.registry?.dimensionsByName?.[bot.game?.dimension]
-      console.log('Dimension registry lookup for', bot.game?.dimension, ':', dimData ? { minY: dimData.minY, height: dimData.height } : 'NOT FOUND')
+      log('Dimension registry lookup for', bot.game?.dimension, ':', dimData ? { minY: dimData.minY, height: dimData.height } : 'NOT FOUND')
 
       // Re-set world dimensions AFTER login packet (login packet may reset bot.game)
       if (isMcprReplay) {
@@ -558,7 +561,7 @@ const mainPacketsReplayer = async (
           // Force correct dimensions for 1.18+
           bot.game.minY = -64
           bot.game.height = 384
-          console.log('Forced 1.18+ world dimensions: minY=-64, height=384')
+          log('Forced 1.18+ world dimensions: minY=-64, height=384')
         }
       }
     }
@@ -567,7 +570,7 @@ const mainPacketsReplayer = async (
 
   // Create bot.entity if needed
   if (!bot.entity) {
-    console.log('Creating bot.entity')
+    log('Creating bot.entity')
     const Entity = require('prismarine-entity')(bot.version)
     const loginPacket = hasLoginPacket ? playPackets[loginPacketIndex] : null
     const entityId = loginPacket?.params?.entityId ?? 0
@@ -590,10 +593,10 @@ const mainPacketsReplayer = async (
     if (positionPacket?.params) {
       const { x, y, z } = positionPacket.params
       bot.entity.position = new Vec3(x ?? 0, y ?? 64, z ?? 0)
-      console.log('Set initial position from packet:', bot.entity.position)
+      log('Set initial position from packet:', bot.entity.position)
     } else {
       // No position packet found, keep at origin but log it
-      console.log('No position packet found, keeping default position:', bot.entity.position)
+      log('No position packet found, keeping default position:', bot.entity.position)
     }
   }
 
@@ -605,21 +608,21 @@ const mainPacketsReplayer = async (
   // Disable physics during replay - prevents player from falling
   if (bot.physics) {
     bot.physics.gravity = 0
-    console.log('Disabled physics gravity for replay mode')
+    log('Disabled physics gravity for replay mode')
   }
 
   // Wait for forcedMove listener (used by index.ts to start viewer in replay mode)
   // In replay mode, spawnEarlier is true so index.ts listens for forcedMove, not health
-  console.log('Waiting for forcedMove listener...')
+  log('Waiting for forcedMove listener...')
   let listenerAttempts = 0
   while (bot.listenerCount('forcedMove') === 0 && listenerAttempts < 200) {
     await new Promise(resolve => setTimeout(resolve, 25)) // eslint-disable-line no-promise-executor-return
     listenerAttempts++
   }
-  console.log('forcedMove listeners:', bot.listenerCount('forcedMove'), 'after', listenerAttempts * 25, 'ms')
+  log('forcedMove listeners:', bot.listenerCount('forcedMove'), 'after', listenerAttempts * 25, 'ms')
 
   // Emit forcedMove event to trigger viewer initialization (index.ts listens for this)
-  console.log('Emitting forcedMove event to start viewer')
+  log('Emitting forcedMove event to start viewer')
   bot.emit('forcedMove')
 
   // Small delay to let viewer initialize
@@ -643,12 +646,12 @@ const mainPacketsReplayer = async (
   // Ensure the client is in PLAY state for packet processing
   const states = require('minecraft-protocol/src/states')
   if (bot._client.state !== states.PLAY) {
-    console.log('Setting bot._client state to PLAY (was:', bot._client.state, ')')
+    log('Setting bot._client state to PLAY (was:', bot._client.state, ')')
     bot._client.state = states.PLAY
   }
 
   // Start main replay loop
-  console.log('Starting MCPR replay from packet', startPacketIndex)
+  log('Starting MCPR replay from packet', startPacketIndex)
 
   // Analyze packet timing for diagnostics
   const serverPackets = playPackets.slice(startPacketIndex).filter(p => p.isFromServer && p.params !== null)
@@ -658,7 +661,7 @@ const mainPacketsReplayer = async (
     return { ...packet, timestamp: totalReplayTime }
   })
 
-  console.log('MCPR packet timing analysis:', {
+  log('MCPR packet timing analysis:', {
     totalPackets: packetsWithTimestamp.length,
     totalReplayTime: `${(totalReplayTime / 1000).toFixed(1)}s`,
     avgDiff: `${(totalReplayTime / packetsWithTimestamp.length).toFixed(1)}ms`,
@@ -740,7 +743,7 @@ const mainPacketsReplayer = async (
     }
   }
   packetsReplayState.chatMarkers = chatMarkers
-  console.log(`[replay] Extracted ${chatMarkers.length} chat markers for timeline`)
+  log(`[replay] Extracted ${chatMarkers.length} chat markers for timeline`)
 
   // ============================================================
   // TIMER-BASED DRIP SYSTEM - mimics real network event delivery
@@ -773,7 +776,7 @@ const mainPacketsReplayer = async (
 
       // Clear all entities except the player's own entity
       const entitiesToRemove = Object.values(bot.entities).filter(entity => entity !== bot.entity)
-      console.log(`Clearing ${entitiesToRemove.length} entities for restart`)
+      log(`Clearing ${entitiesToRemove.length} entities for restart`)
       for (const entity of entitiesToRemove as Entity[]) {
         bot.emit('entityGone', entity)
         delete bot.entities[entity.id]
@@ -791,7 +794,7 @@ const mainPacketsReplayer = async (
       packetsReplayState.progress.current = 0
       packetsReplayState.isPlaying = true
       replayFinished = false
-      console.log('Replay restarted')
+      log('Replay restarted')
     }
 
     // Handle seek request - check this FIRST so it works even after replay finishes
@@ -809,11 +812,11 @@ const mainPacketsReplayer = async (
         targetIndex = i
       }
 
-      console.log(`Seeking to ${targetMs}ms, packet index ${targetIndex}`)
+      log(`Seeking to ${targetMs}ms, packet index ${targetIndex}`)
 
       // Clear all entities except the player's own entity (same as restart)
       const entitiesToRemove = Object.values(bot.entities).filter(entity => entity !== bot.entity)
-      console.log(`Clearing ${entitiesToRemove.length} entities for seek`)
+      log(`Clearing ${entitiesToRemove.length} entities for seek`)
       for (const entity of entitiesToRemove as Entity[]) {
         bot.emit('entityGone', entity)
         delete bot.entities[entity.id]
@@ -824,7 +827,7 @@ const mainPacketsReplayer = async (
       clearKradleverseChat() // Synchronously clear kradleverse chat before fast-forward
 
       // Fast-forward: replay all packets from 0 to targetIndex immediately (no timing)
-      console.log(`Fast-forwarding ${targetIndex} packets...`)
+      log(`Fast-forwarding ${targetIndex} packets...`)
       setSkipChatMessages(true)
       for (let i = 0; i < targetIndex; i++) {
         const packet = packetsWithTimestamp[i]
@@ -832,7 +835,7 @@ const mainPacketsReplayer = async (
       }
       setSkipChatMessages(false)
       customEvents.emit('seekComplete')
-      console.log('Fast-forward complete')
+      log('Fast-forward complete')
 
       // Update replay position to continue from target
       currentPacketIndex = targetIndex
@@ -889,14 +892,14 @@ const mainPacketsReplayer = async (
       if (currentPacketIndex - lastLoggedIndex >= 500) {
         lastLoggedIndex = currentPacketIndex
         const columnsCount = bot.world?.columns ? Object.keys(bot.world.columns).length : 0
-        console.log(`Packet progress: ${currentPacketIndex}/${packetsWithTimestamp.length}, chunks: ${columnsCount}`)
+        log(`Packet progress: ${currentPacketIndex}/${packetsWithTimestamp.length}, chunks: ${columnsCount}`)
       }
 
       // Clear loading screen once chunks are loaded
       if (!loadingScreenCleared) {
         const columnsCount = bot.world?.columns ? Object.keys(bot.world.columns).length : 0
         if (columnsCount > 0) {
-          console.log('Chunks loaded, clearing loading screen')
+          log('Chunks loaded, clearing loading screen')
           setLoadingScreenStatus(undefined)
           loadingScreenCleared = true
         }
@@ -912,7 +915,7 @@ const mainPacketsReplayer = async (
     if (currentPacketIndex >= packetsWithTimestamp.length && !replayFinished) {
       replayFinished = true
       const finalColumnsCount = bot.world?.columns ? Object.keys(bot.world.columns).length : 0
-      console.log(`Replay finished - chunks in world: ${finalColumnsCount}`)
+      log(`Replay finished - chunks in world: ${finalColumnsCount}`)
 
       // Pause the replay (keep entities and world visible)
       packetsReplayState.isPlaying = false
@@ -961,7 +964,7 @@ const mainPacketsReplayer = async (
   replayStartTime = performance.now()
   requestAnimationFrame(processPacketsDue)
 
-  console.log('Started rAF-based packet replay (synced with browser render cycle)')
+  log('Started rAF-based packet replay (synced with browser render cycle)')
 }
 
 export const switchGameMode = (gameMode: GameMode) => {
