@@ -16,6 +16,7 @@ import { BlockModel } from 'mc-assets'
 import { isEntityAttackable } from 'mineflayer-mouse/dist/attackableEntity'
 import { Vec3 } from 'vec3'
 import { EntityMetadataVersions } from '../../../src/mcDataTypes'
+import { isSkippingMessages } from '../../../src/react/ChatProvider'
 import { ItemSpecificContextProperties } from '../lib/basePlayerState'
 import { loadSkinImage, getLookupUrl, stevePngUrl, steveTexture } from '../lib/utils/skins'
 import { loadTexture } from '../lib/utils'
@@ -119,8 +120,10 @@ function addPlayerOutline (playerObject: PlayerObjectType): { cleanup: () => voi
         if (patchedMats.has(mat)) continue
         patchedMats.add(mat)
         matStates.push({ mat, wasTransparent: mat.transparent })
-        mat.transparent = true
-        mat.needsUpdate = true
+        if (!mat.transparent) {
+          mat.transparent = true
+          mat.needsUpdate = true
+        }
       }
     })
   }
@@ -468,14 +471,26 @@ export class Entities {
     this.debugMode = 'none'
     this.onSkinUpdate = () => { }
 
-    // Listen for agent skins updates and re-evaluate all player skins
     if (typeof customEvents !== 'undefined') {
+      // Listen for agent skins updates and re-evaluate all player skins
       customEvents.on('agentSkinsUpdated', () => {
-        // console.log('[Custom Skin Debug] agentSkinsUpdated event received in entities.ts')
-        // Small delay to ensure the map is fully populated
         setTimeout(() => {
           this.reEvaluateAllPlayerSkins()
         }, 100)
+      })
+
+      // After a seek/fast-forward completes, batch-refresh all player nametags and
+      // force the xray outline to re-evaluate (it was skipped during fast-forward).
+      customEvents.on('seekComplete', () => {
+        // Clear stale chat lines — they are from before the seek and must not appear
+        for (const data of this.playerData.values()) {
+          data.chatLine = null
+          data.chatExpiry = 0
+        }
+        this.refreshAllPlayerNametags()
+        // Setting currentXrayMode to undefined causes the next render() call to
+        // invoke updateAllPlayerOutlines(), re-adding outlines for all entities at once.
+        this.currentXrayMode = undefined
       })
     }
   }
@@ -1008,7 +1023,8 @@ export class Entities {
         // Name is rendered in the combined playerInfo sprite (see updatePlayerNametagSprites)
 
         // Through-wall ghost outline for non-watcher players (only when xrayMode is enabled)
-        if (this.worldRenderer.worldRendererConfig.xrayMode && entity.username && entity.username.toLowerCase() !== 'watcher') {
+        // Skip during seek — outlines are rebuilt on seekComplete via updateAllPlayerOutlines
+        if (!isSkippingMessages() && this.worldRenderer.worldRendererConfig.xrayMode && entity.username && entity.username.toLowerCase() !== 'watcher') {
           const outline = addPlayerOutline(playerObject)
           group['outlineCleanup'] = outline.cleanup
           group['outlinePatchObject'] = outline.patchObject
@@ -1345,7 +1361,17 @@ export class Entities {
     }
   }
 
+  private refreshAllPlayerNametags () {
+    for (const group of Object.values(this.entities)) {
+      const username = group['playerUsername'] as string | undefined
+      if (username) this.updatePlayerNametagSprites(group, username)
+    }
+  }
+
   private updatePlayerNametagSprites (entityGroup: SceneEntity, username: string) {
+    // Skip canvas creation during seek/fast-forward; seekComplete will batch-refresh all.
+    if (isSkippingMessages()) return
+
     const data = this.playerData.get(username)
     const now = Date.now()
     const chatLine = data && data.chatExpiry > now ? data.chatLine : null

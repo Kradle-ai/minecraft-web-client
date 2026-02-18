@@ -33,6 +33,8 @@ export function setSkipChatMessages (skip: boolean) {
   skipChatMessages = skip
 }
 
+export const isSkippingMessages = () => skipChatMessages
+
 function getMessageHash (parts: any[]): string {
   return parts.map(p => p.text || '').join('|')
 }
@@ -57,8 +59,6 @@ function sendChatToParent () {
 }
 
 export function sendMessageToParent (parts: any[], type: ChatMessageType) {
-  const text = parts.map(p => p.text || '').join('')
-  console.log(`[chat:${type}]`, text)
   if (!appQueryParams.kradleverse || window === window.parent) return
   if (skipChatMessages) return
   const hash = `${type}|${getMessageHash(parts)}`
@@ -123,8 +123,6 @@ function classifyMessage (jsonMsg: any, parts: Array<{ text: string }>): ChatMes
     } catch { }
   }
 
-  // Unclassified — log for investigation
-  console.log('[chat:unclassified]', { translate, fullText, jsonMsg })
   return null
 }
 

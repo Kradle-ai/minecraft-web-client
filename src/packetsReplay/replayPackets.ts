@@ -831,6 +831,7 @@ const mainPacketsReplayer = async (
         playServerPacket(packet.name, packet.params)
       }
       setSkipChatMessages(false)
+      customEvents.emit('seekComplete')
       console.log('Fast-forward complete')
 
       // Update replay position to continue from target
