@@ -265,15 +265,21 @@ function createChatBubbleCanvas (text: string, fontFamily: string): HTMLCanvasEl
 function createHealthBarCanvas (health: number, fontFamily: string): HTMLCanvasElement {
   const canvas = document.createElement('canvas')
   const ctx = canvas.getContext('2d')!
-  const fontSize = 48
-  const padding = 4
-  const heartCount = 5
+  const fontSize = 36
+  const padding = 8
 
-  const heartStep = fontSize * 0.65 // tighter than measureText which includes emoji whitespace
-  canvas.width = heartStep * heartCount + padding * 2
+  const gap = 6
+  const heartFontSize = 42
+  ctx.font = `${fontSize}px ${fontFamily}`
+  const numWidth = ctx.measureText(`${health}`).width
+  ctx.font = `${heartFontSize}px ${fontFamily}`
+  const heartWidth = ctx.measureText('❤').width
+  const textWidth = numWidth + gap + heartWidth
+
+  canvas.width = textWidth + padding * 2 + 6
   canvas.height = Math.round(fontSize * 0.65) + padding * 2
 
-  // Background (same color as nametag, 25px border radius)
+  // Background (same style as nametag)
   const r = 5
   const w = canvas.width
   const h = canvas.height
@@ -291,12 +297,16 @@ function createHealthBarCanvas (health: number, fontFamily: string): HTMLCanvasE
   ctx.closePath()
   ctx.fill()
 
+  // Draw number in white
   ctx.font = `${fontSize}px ${fontFamily}`
-  const filledHearts = Math.round(health / 2)
-  for (let i = 0; i < heartCount; i++) {
-    ctx.fillStyle = i < filledHearts ? '#FF4444' : '#444444'
-    ctx.fillText('❤', padding + i * heartStep, canvas.height - padding)
-  }
+  ctx.fillStyle = 'white'
+  const numText = `${health}`
+  ctx.fillText(numText, padding, h - padding)
+
+  // Draw heart in red, slightly larger
+  ctx.font = `${heartFontSize}px ${fontFamily}`
+  ctx.fillStyle = '#FF4444'
+  ctx.fillText('❤', padding + ctx.measureText(numText).width + gap, h - padding)
 
   return canvas
 }
@@ -1619,7 +1629,7 @@ export class Entities {
     const entityMesh = this.entities[entityId]?.children.find(c => c.name === 'mesh')
     if (entityMesh) {
       entityMesh.traverse((child) => {
-        if (child instanceof THREE.Mesh) {
+        if (child instanceof THREE.Mesh && child.material && typeof child.material.clone === 'function') {
           const clonedMaterial = child.material.clone()
           clonedMaterial.dispose()
           child.material = child.material.clone()
