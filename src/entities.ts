@@ -3,6 +3,14 @@ import { versionToNumber } from 'renderer/viewer/common/utils'
 import { getThreeJsRendererMethods } from 'renderer/viewer/three/threeJsMethods'
 
 customEvents.on('gameLoaded', () => {
+  // Update player health hearts from kradle.health scoreboard objective
+  // Use raw packet listener to work in both live and replay modes
+  bot._client.on('scoreboard_score' as any, (data: any) => {
+    if (data.scoreName === 'kradle.health') {
+      getThreeJsRendererMethods()?.setPlayerHealth(data.itemName, data.value ?? 0)
+    }
+  })
+
   const entityData = (e: Entity) => {
     if (!e.username) return
     window.debugEntityMetadata ??= {}
