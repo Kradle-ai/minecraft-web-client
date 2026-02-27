@@ -3,7 +3,6 @@ import { useSnapshot } from 'valtio'
 import { cameraState, setCamera, getTrackedPlayersWithStatus, type PlayerUnavailableReason } from '../interactiveControls'
 import { appQueryParams } from '../appParams'
 import { gameAdditionalState } from '../globalState'
-import { viewerVersionState } from '../viewerConnector'
 
 const font = 'system-ui, -apple-system, sans-serif'
 const replayAccentColor = '#f59e0b'
@@ -126,18 +125,18 @@ function formatTime (ms: number): string {
 }
 
 function useLiveElapsed (): string | null {
-  const { time: startTime } = useSnapshot(viewerVersionState)
+  const liveAt = appQueryParams.liveAt ? Number(appQueryParams.liveAt) : 0
   const [elapsed, setElapsed] = useState('')
 
   useEffect(() => {
-    if (!startTime) return
-    const tick = () => setElapsed(formatTime(Date.now() - startTime))
+    if (!liveAt) return
+    const tick = () => setElapsed(formatTime(Date.now() - liveAt))
     tick()
     const interval = setInterval(tick, 1000)
     return () => clearInterval(interval)
-  }, [startTime])
+  }, [liveAt])
 
-  return startTime ? elapsed : null
+  return liveAt ? elapsed : null
 }
 
 type DropdownMode = 'replay' | 'live' | null
@@ -181,6 +180,13 @@ export default function ReplayDropdown () {
 
   const isLive = mode === 'live'
   const accentColor = isLive ? liveAccentColor : replayAccentColor
+
+  const getActiveIcon = () => {
+    if (camera.mode === 'birdsEye') return <EyeIcon />
+    if (camera.mode === 'freeRoam') return <GlobeIcon />
+    if (camera.mode === 'thirdPerson') return <span style={{ fontSize: 12, lineHeight: 1 }}>🤖</span>
+    return null
+  }
 
   const getActiveLabel = () => {
     if (camera.mode === 'birdsEye') return 'Bird\'s Eye'
@@ -237,6 +243,7 @@ export default function ReplayDropdown () {
           <span style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>{liveElapsed}</span>
           <div style={{ width: 1, height: 14, background: 'rgba(255, 255, 255, 0.2)' }} />
         </>}
+        {getActiveIcon()}
         <span style={{ fontWeight: 500 }}>{getActiveLabel()}</span>
         <ChevronIcon open={open} />
       </div>
