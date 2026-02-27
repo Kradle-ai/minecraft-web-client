@@ -117,6 +117,7 @@ function isTrackedPlayer (entity: { type: string, position?: Vec3, username?: st
     && !!entity.position
     && !!entity.username
     && !birdsEyeExcludedNames.has(entity.username)
+    && !entity.username.startsWith('viewer-')
     && !isAtDefaultOrigin(entity.position)
 }
 
@@ -124,7 +125,7 @@ function getTrackedPlayerEntities (): Array<{ position: Vec3, username: string }
   if (!bot) return []
   const result: Array<{ position: Vec3, username: string }> = []
 
-  if (bot.entity?.position && !birdsEyeExcludedNames.has(bot.username || '') && !isAtDefaultOrigin(bot.entity.position)) {
+  if (bot.entity?.position && !birdsEyeExcludedNames.has(bot.username || '') && !(bot.username || '').startsWith('viewer-') && !isAtDefaultOrigin(bot.entity.position)) {
     result.push({ position: bot.entity.position, username: bot.username || 'bot' })
   }
   for (const entity of Object.values(bot.entities)) {

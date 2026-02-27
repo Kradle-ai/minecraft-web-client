@@ -56,6 +56,7 @@ export type AppQsParams = {
   timeMs?: string
   kradleverse?: boolean
   live?: string
+  liveAt?: string
   allowRecording?: string
 }
 
