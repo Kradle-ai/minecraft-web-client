@@ -2,14 +2,27 @@ import { useState, useEffect, useRef } from 'react'
 import { useSnapshot } from 'valtio'
 import { cameraState, setCamera, getTrackedPlayersWithStatus, type PlayerUnavailableReason } from '../interactiveControls'
 import { appQueryParams } from '../appParams'
+import { gameAdditionalState } from '../globalState'
+import { viewerVersionState } from '../viewerConnector'
 
 const font = 'system-ui, -apple-system, sans-serif'
-const accentColor = '#f59e0b'
+const replayAccentColor = '#f59e0b'
+const liveAccentColor = '#ef4444'
 
 const PlayIcon = () => (
-  <svg style={{ width: 12, height: 12, color: accentColor }} viewBox="0 0 24 24" fill="currentColor">
+  <svg style={{ width: 12, height: 12, color: replayAccentColor }} viewBox="0 0 24 24" fill="currentColor">
     <path d="M8 5v14l11-7z" />
   </svg>
+)
+
+const LiveDot = () => (
+  <div style={{
+    width: 10,
+    height: 10,
+    borderRadius: '50%',
+    background: liveAccentColor,
+    boxShadow: `0 0 6px ${liveAccentColor}`,
+  }} />
 )
 
 const ChevronIcon = ({ open }: { open: boolean }) => (
@@ -57,13 +70,14 @@ const SectionLabel = ({ children }: { children: string }) => (
   </div>
 )
 
-const MenuItem = ({ icon, label, sublabel, active, disabled, onClick }: {
+const MenuItem = ({ icon, label, sublabel, active, disabled, onClick, accentColor }: {
   icon: React.ReactNode
   label: string
   sublabel?: string
   active?: boolean
   disabled?: boolean
   onClick: () => void
+  accentColor: string
 }) => {
   const [hovered, setHovered] = useState(false)
 
@@ -99,24 +113,58 @@ const MenuItem = ({ icon, label, sublabel, active, disabled, onClick }: {
   )
 }
 
-function useIsReplay () {
-  return !!(appQueryParams.replayFileUrl || appQueryParams.replayUrl)
+function formatTime (ms: number): string {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000))
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+
+  if (hours > 0) {
+    return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+  }
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`
+}
+
+function useLiveElapsed (): string | null {
+  const { time: startTime } = useSnapshot(viewerVersionState)
+  const [elapsed, setElapsed] = useState('')
+
+  useEffect(() => {
+    if (!startTime) return
+    const tick = () => setElapsed(formatTime(Date.now() - startTime))
+    tick()
+    const interval = setInterval(tick, 1000)
+    return () => clearInterval(interval)
+  }, [startTime])
+
+  return startTime ? elapsed : null
+}
+
+type DropdownMode = 'replay' | 'live' | null
+
+function useDropdownMode (): DropdownMode {
+  const { viewerConnection } = useSnapshot(gameAdditionalState)
+  if (viewerConnection) return 'live'
+  const isReplay = !!(appQueryParams.replayFileUrl || appQueryParams.replayUrl)
+  if (isReplay) return 'replay'
+  return null
 }
 
 export default function ReplayDropdown () {
-  const isReplay = useIsReplay()
+  const mode = useDropdownMode()
   const camera = useSnapshot(cameraState)
+  const liveElapsed = useLiveElapsed()
   const [open, setOpen] = useState(false)
   const [players, setPlayers] = useState<Array<{ username: string, available: boolean, reason: PlayerUnavailableReason }>>([])
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (!isReplay) return
+    if (!mode) return
     const update = () => setPlayers(getTrackedPlayersWithStatus())
     update()
     const interval = setInterval(update, 1000)
     return () => clearInterval(interval)
-  }, [isReplay])
+  }, [mode])
 
   useEffect(() => {
     if (!open) return
@@ -129,7 +177,10 @@ export default function ReplayDropdown () {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [open])
 
-  if (!isReplay) return null
+  if (!mode) return null
+
+  const isLive = mode === 'live'
+  const accentColor = isLive ? liveAccentColor : replayAccentColor
 
   const getActiveLabel = () => {
     if (camera.mode === 'birdsEye') return 'Bird\'s Eye'
@@ -179,9 +230,13 @@ export default function ReplayDropdown () {
           userSelect: 'none',
         }}
       >
-        <PlayIcon />
-        <span style={{ color: accentColor, fontWeight: 600 }}>INTERACTIVE REPLAY</span>
+        {isLive ? <LiveDot /> : <PlayIcon />}
+        <span style={{ color: accentColor, fontWeight: 600 }}>{isLive ? 'LIVE' : 'INTERACTIVE REPLAY'}</span>
         <div style={{ width: 1, height: 14, background: 'rgba(255, 255, 255, 0.2)' }} />
+        {isLive && liveElapsed && <>
+          <span style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>{liveElapsed}</span>
+          <div style={{ width: 1, height: 14, background: 'rgba(255, 255, 255, 0.2)' }} />
+        </>}
         <span style={{ fontWeight: 500 }}>{getActiveLabel()}</span>
         <ChevronIcon open={open} />
       </div>
@@ -212,6 +267,7 @@ export default function ReplayDropdown () {
               label="Bird's Eye"
               sublabel="overhead view of action"
               active={camera.mode === 'birdsEye'}
+              accentColor={accentColor}
               onClick={() => handleCameraMode('birdsEye')}
             />
             <MenuItem
@@ -219,6 +275,7 @@ export default function ReplayDropdown () {
               label="Free Roam"
               sublabel="click viewport to fly"
               active={camera.mode === 'freeRoam'}
+              accentColor={accentColor}
               onClick={() => handleCameraMode('freeRoam')}
             />
 
@@ -237,6 +294,7 @@ export default function ReplayDropdown () {
                     sublabel={!available && reason ? reason : undefined}
                     active={camera.mode === 'thirdPerson' && camera.target === username}
                     disabled={!available}
+                    accentColor={accentColor}
                     onClick={() => handleFollowPlayer(username)}
                   />
                 ))}
