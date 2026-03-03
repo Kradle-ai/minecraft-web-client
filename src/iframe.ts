@@ -154,7 +154,7 @@ export function registerPauseHotkey () {
   const onKeyDown = (e: KeyboardEvent) => {
     if (e.repeat) return
 
-    // "J" key to jump back 10 seconds, pause at start
+    // "j" key to jump back 10 seconds
     if (e.code === 'KeyJ' && !e.repeat && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
       e.preventDefault()
       const targetMs = Math.max(0, packetsReplayState.currentTimeMs - 10_000)
@@ -163,10 +163,30 @@ export function registerPauseHotkey () {
       reportCameraState()
     }
 
-    // "L" key to leap forward 10 seconds, pause at end
+    // "J" (shift) key to step back 0.5 seconds
+    if (e.code === 'KeyJ' && !e.repeat && !e.altKey && !e.ctrlKey && !e.metaKey && e.shiftKey) {
+      e.preventDefault()
+      const targetMs = Math.max(0, packetsReplayState.currentTimeMs - 500)
+      audioTrackScheduler.setSeekTarget(targetMs)
+      packetsReplayState.seekTargetMs = targetMs
+      reportCameraState()
+    }
+
+    // "l" key to leap forward 10 seconds
     if (e.code === 'KeyL' && !e.repeat && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
       e.preventDefault()
       const rawTarget = packetsReplayState.currentTimeMs + 10_000
+      const targetMs = Math.min(packetsReplayState.totalDurationMs, rawTarget)
+      audioTrackScheduler.setSeekTarget(targetMs)
+      packetsReplayState.seekTargetMs = targetMs
+      if (rawTarget >= packetsReplayState.totalDurationMs) pausePlayback()
+      reportCameraState()
+    }
+
+    // "L" (shift) key to step forward 0.5 seconds
+    if (e.code === 'KeyL' && !e.repeat && !e.altKey && !e.ctrlKey && !e.metaKey && e.shiftKey) {
+      e.preventDefault()
+      const rawTarget = packetsReplayState.currentTimeMs + 500
       const targetMs = Math.min(packetsReplayState.totalDurationMs, rawTarget)
       audioTrackScheduler.setSeekTarget(targetMs)
       packetsReplayState.seekTargetMs = targetMs
