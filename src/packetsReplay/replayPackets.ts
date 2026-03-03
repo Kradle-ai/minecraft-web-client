@@ -847,9 +847,16 @@ const mainPacketsReplayer = async (
       totalPausedTime = 0
       packetsReplayState.progress.current = targetIndex
       packetsReplayState.currentTimeMs = targetMs
+      const wasPaused = !packetsReplayState.isPlaying
       packetsReplayState.isPlaying = true
       pausedAt = 0
       replayFinished = false
+
+      // Restore pause state after seek so J/L don't unpause
+      if (wasPaused) {
+        packetsReplayState.isPlaying = false
+        pausedAt = performance.now()
+      }
     }
 
     // If paused or finished, track pause time and keep loop running for restart/seek
