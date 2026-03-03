@@ -74,7 +74,34 @@ function sendMessageToParent (payload: Record<string, any>) {
   }
 }
 
+export function getCurrentCameraPositionAndDirection (): { position: { x: number, y: number, z: number }, direction: { yaw: number, pitch: number } } | null {
+  if (cameraState.mode === 'freeRoam') {
+    const pos = getSpectatorCameraPosition()
+    const dir = getSpectatorCameraDirection()
+    if (!pos || !dir) return null
+    return { position: { x: pos.x, y: pos.y, z: pos.z }, direction: dir }
+  }
+  if (cameraState.mode === 'birdsEye') {
+    const { position, yaw, pitch } = getBirdsEyeCameraPosition()
+    return { position: { x: position.x, y: position.y, z: position.z }, direction: { yaw, pitch } }
+  }
+  if (cameraState.mode === 'thirdPerson' && following?.entity) {
+    const { position, yaw, pitch } = getThirdPersonCameraPosition()
+    return { position: { x: position.x, y: position.y, z: position.z }, direction: { yaw, pitch } }
+  }
+  if (cameraState.mode === 'firstPerson' && bot?.entity) {
+    const pos = bot.entity.position
+    const eyeHeight = 1.62
+    return {
+      position: { x: pos.x, y: pos.y + eyeHeight, z: pos.z },
+      direction: { yaw: bot.entity.yaw, pitch: bot.entity.pitch }
+    }
+  }
+  return null
+}
+
 export function reportCameraState () {
+  const cam = getCurrentCameraPositionAndDirection()
   sendMessageToParent({
     action: 'cameraState',
     mode: cameraState.mode,
@@ -86,6 +113,7 @@ export function reportCameraState () {
     isRecording: getRecordingStatus(),
     isMicEnabled: getMicStatus(),
     isCameraEnabled: getCameraStatus(),
+    ...(cam && { position: cam.position, direction: cam.direction }),
   })
 }
 
@@ -333,8 +361,6 @@ export function setCamera (config: { mode: CameraMode, target?: string }) {
   const { mode, target } = config
   const previousMode = cameraState.mode
 
-  console.log('[InteractiveControls] setCamera:', previousMode, '->', mode, target ? `(target: ${target})` : '')
-
   switch (mode) {
     case 'firstPerson': {
       // Clear spectator position
@@ -383,8 +409,8 @@ export function setCamera (config: { mode: CameraMode, target?: string }) {
     }
 
     case 'freeRoam': {
-      // If spectator position is already set (e.g. from overlay click), keep it
-      if (!getSpectatorCameraPosition()) {
+      const existingPos = getSpectatorCameraPosition()
+      if (!existingPos) {
         let startPos = getBirdsEyeCameraPosition()
         if (previousMode === 'thirdPerson' && following?.entity?.position) {
           startPos = getThirdPersonCameraPosition()
@@ -401,6 +427,15 @@ export function setCamera (config: { mode: CameraMode, target?: string }) {
       cameraState.target = null
       // Enable keyboard control for WASD camera movement
       controMax.enabled = true
+
+      // Immediately apply spectator position to the Three.js camera
+      const finalPos = getSpectatorCameraPosition()
+      if (finalPos) {
+        const dir = getSpectatorCameraDirection()
+        appViewer.backend?.updateCamera(finalPos, dir?.yaw ?? 0, dir?.pitch ?? 0)
+        void appViewer.worldView?.updatePosition(finalPos)
+      }
+
       // Request pointer lock for mouse capture
       void pointerLock.requestPointerLock()
       break
@@ -524,8 +559,15 @@ export function trackCameraMovement () {
 // Listen for postMessage commands from parent
 function setupPostMessageListener () {
   customEvents.on('kradle:setCamera', (data: any) => {
-    const { mode, target } = data
+    const { mode, target, position, direction } = data
     if (mode) {
+      if (mode === 'freeRoam' && position) {
+        setSpectatorCameraPosition(
+          new Vec3(position.x, position.y, position.z),
+          direction?.yaw,
+          direction?.pitch,
+        )
+      }
       setCamera({ mode, target })
     }
   })

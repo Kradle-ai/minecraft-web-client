@@ -3,7 +3,7 @@
 import { getThreeJsRendererMethods } from 'renderer/viewer/three/threeJsMethods'
 import { options } from './optionsStorage'
 import { musicSystem } from './sounds/musicSystem'
-import { reestablishFollowing, reportCameraState } from './interactiveControls'
+import { reestablishFollowing, reportCameraState, getCurrentCameraPositionAndDirection } from './interactiveControls'
 import { toggleMic, toggleCamera, toggleRecording } from './controls'
 import { audioTrackScheduler } from './sounds/audioTrackScheduler'
 import { appQueryParams } from './appParams'
@@ -31,6 +31,8 @@ type IFrameSendablePayload =
     isRecording: boolean;
     isMicEnabled: boolean;
     isCameraEnabled: boolean;
+    position?: { x: number; y: number; z: number };
+    direction?: { yaw: number; pitch: number };
   }
   | {
     source: 'minecraft-web-client';
@@ -64,6 +66,8 @@ type IFrameSendablePayload =
     source: 'minecraft-web-client';
     action: 'screenshotData';
     imageData: string; // Base64 data URL string (JPEG)
+    position?: { x: number; y: number; z: number };
+    direction?: { yaw: number; pitch: number };
   }
   | {
     source: 'minecraft-web-client';
@@ -82,7 +86,7 @@ type IFrameSendablePayload =
     feature: 'recording' | 'camera' | 'voice';
   }
 
-type ReceivableActions = 'command' | 'reconnect' | 'setAgentSkins' | 'releasePointerLock' | 'takeScreenshot' | 'setCamera' | 'sendRecordingMessageList'
+type ReceivableActions = 'command' | 'reconnect' | 'setAgentSkins' | 'releasePointerLock' | 'takeScreenshot' | 'setCamera' | 'sendRecordingMessageList' | 'togglePlayPause' | 'pause' | 'play'
 
 let playerPaused = false
 
@@ -481,19 +485,35 @@ export function setupIframeComms () {
     }
 
     try {
-      // Capture canvas as JPEG with 0.8 quality for reasonable file sizes
       const imageData = gameCanvas.toDataURL('image/jpeg', 0.8)
+      const cam = getCurrentCameraPositionAndDirection()
 
-      // Send screenshot data back to parent
       sendMessageToKradle({
         action: 'screenshotData',
         imageData,
+        ...(cam && { position: cam.position, direction: cam.direction }),
       })
 
       log('[iframe-rpc] Screenshot captured and sent to parent')
     } catch (error) {
       console.error('[iframe-rpc] Failed to capture screenshot:', error)
     }
+  })
+
+  customEvents.on('kradle:togglePlayPause', () => {
+    if (playerPaused) {
+      unpausePlayback()
+    } else {
+      pausePlayback()
+    }
+  })
+
+  customEvents.on('kradle:pause', () => {
+    if (!playerPaused) pausePlayback()
+  })
+
+  customEvents.on('kradle:play', () => {
+    if (playerPaused) unpausePlayback()
   })
 
   // Handle connection status reporting

@@ -637,10 +637,12 @@ const mainPacketsReplayer = async (
       bot.game.gameMode = 'spectator'
       bot.emit('game')
     }
-    // Start in birds eye view mode for replays - emit event so overlay shows
-    // Start in birds eye view for MCPR replays
-    const { setCamera } = require('../interactiveControls')
-    setCamera({ mode: 'birdsEye' })
+    // Default to birds eye for MCPR replays, but don't override if the parent
+    // already set a different camera mode (e.g. freeRoam with position for moment highlights)
+    const { setCamera, getSpectatorCameraPosition } = require('../interactiveControls')
+    if (!getSpectatorCameraPosition()) {
+      setCamera({ mode: 'birdsEye' })
+    }
   }
 
   // Ensure the client is in PLAY state for packet processing
