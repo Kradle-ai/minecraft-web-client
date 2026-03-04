@@ -3,7 +3,7 @@ import mojangson from 'mojangson'
 import nbt from 'prismarine-nbt'
 import type { ClientOnMap } from '../generatedServerPackets'
 import { formatMessage } from '../chatUtils'
-import { sendMessageToParent } from './ChatProvider'
+import { isSkippingMessages, sendMessageToParent } from './ChatProvider'
 import Title from './Title'
 import type { AnimationTimes } from './Title'
 
@@ -41,26 +41,40 @@ export default () => {
   const [openActionBar, setOpenActionBar] = useState(false)
 
   useMemo(() => {
+    customEvents.on('seekComplete', () => {
+      setOpenTitle(false)
+      setOpenActionBar(false)
+      setTitle(defaultText)
+      setSubtitle(defaultText)
+      setActionBar(defaultText)
+      setAnimTimes(defaultTimings)
+    })
+
     // todo move to mineflayer
     bot._client.on('set_title_text', (packet) => {
+      if (isSkippingMessages()) return
       const component = getComponent(packet.text)
       setTitle(component)
       setOpenTitle(true)
       sendMessageToParent(formatMessage(component), 'title')
     })
     bot._client.on('set_title_subtitle', (packet) => {
+      if (isSkippingMessages()) return
       const component = getComponent(packet.text)
       setSubtitle(component)
       sendMessageToParent(formatMessage(component), 'subtitle')
     })
     bot._client.on('action_bar', (packet) => {
+      if (isSkippingMessages()) return
       setActionBar(getComponent(packet.text))
       setOpenActionBar(true)
     })
     bot._client.on('set_title_time', (packet) => {
+      if (isSkippingMessages()) return
       setAnimTimes(ticksToMs(packet))
     })
     bot._client.on('clear_titles', (mes) => {
+      if (isSkippingMessages()) return
       setOpenTitle(false)
       setOpenActionBar(false)
       if (mes.reset) {
@@ -73,6 +87,7 @@ export default () => {
 
 
     bot.on('actionBar', (packet) => {
+      if (isSkippingMessages()) return
       setAnimTimes({ fadeIn: 0, stay: 2000, fadeOut: 1000 })
       setActionBar(packet)
       setOpenActionBar(true)
@@ -80,6 +95,7 @@ export default () => {
 
     // before 1.17
     bot._client.on('title', (packet: ClientOnMap['title'] | string) => {
+      if (isSkippingMessages()) return
       let mes: ClientOnMap['title']
       if (typeof packet === 'string') {
         mes = JSON.parse(packet)

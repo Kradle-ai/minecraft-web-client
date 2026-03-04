@@ -835,7 +835,9 @@ const mainPacketsReplayer = async (
         const packet = packetsWithTimestamp[i]
         playServerPacket(packet.name, packet.params)
       }
-      setSkipChatMessages(false)
+      // client.write defers event emission via setTimeout, so the skip flag
+      // must stay active until those deferred handlers have run
+      setTimeout(() => setSkipChatMessages(false), 0)
       customEvents.emit('seekComplete')
       log('Fast-forward complete')
 
