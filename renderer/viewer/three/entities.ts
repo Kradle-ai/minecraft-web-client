@@ -17,6 +17,7 @@ import { isEntityAttackable } from 'mineflayer-mouse/dist/attackableEntity'
 import { Vec3 } from 'vec3'
 import { EntityMetadataVersions } from '../../../src/mcDataTypes'
 import { isSkippingMessages } from '../../../src/react/ChatProvider'
+import { isGamePaused } from '../../../src/iframe'
 import { ItemSpecificContextProperties } from '../lib/basePlayerState'
 import { loadSkinImage, getLookupUrl, stevePngUrl, steveTexture } from '../lib/utils/skins'
 import { loadTexture } from '../lib/utils'
@@ -1352,7 +1353,15 @@ export class Entities {
     data.chatExpiry = Date.now() + 5000
     this.playerData.set(username, data)
     this.refreshPlayerNametag(username)
-    setTimeout(() => this.refreshPlayerNametag(username), 5000)
+    const scheduleRemoval = () => {
+      if (isGamePaused()) {
+        data.chatExpiry = Date.now() + 500
+        setTimeout(scheduleRemoval, 500)
+        return
+      }
+      this.refreshPlayerNametag(username)
+    }
+    setTimeout(scheduleRemoval, 5000)
   }
 
   setPlayerHealth (username: string, health: number) {
@@ -1384,7 +1393,8 @@ export class Entities {
 
     const data = this.playerData.get(username)
     const now = Date.now()
-    const chatLine = data && data.chatExpiry > now ? data.chatLine : null
+    const paused = isGamePaused()
+    const chatLine = data?.chatLine && (data.chatExpiry > now || paused) ? data.chatLine : null
     const health = data?.health ?? 20
     const { fontFamily } = this.entitiesOptions
 

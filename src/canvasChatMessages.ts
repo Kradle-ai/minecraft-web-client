@@ -33,6 +33,7 @@ export interface CanvasChatMessage {
   timestamp: number
   pausedDuration: number // Total time spent paused since message was created
   lastPauseCheck: number // Last time we checked pause state
+  wasPaused: boolean // Whether the game was paused at last check
   // Animation state for stacked layout
   currentY: number | null // Current animated Y position (null = not yet positioned)
   targetY: number | null // Target Y position for animation
@@ -77,6 +78,7 @@ export function addCanvasChatMessage (parts: MessageFormatPart[]): void {
     timestamp: now,
     pausedDuration: 0,
     lastPauseCheck: now,
+    wasPaused: isGamePaused(),
     currentY: null,
     targetY: null,
     animationStartY: null,
@@ -155,11 +157,21 @@ export function getMessageOpacity (msg: CanvasChatMessage): number {
   const now = Date.now()
   const paused = isGamePaused()
 
-  // Accumulate paused time
-  if (paused) {
+  // Accumulate paused time: add the delta whenever we were paused during the interval
+  if (paused || msg.wasPaused) {
     msg.pausedDuration += now - msg.lastPauseCheck
   }
   msg.lastPauseCheck = now
+  msg.wasPaused = paused
+
+  // While paused, freeze at full opacity so messages don't fade away
+  if (paused) {
+    const elapsed = now - msg.timestamp - msg.pausedDuration
+    if (elapsed < APPEAR_DELAY) return 0
+    const visibleElapsed = elapsed - APPEAR_DELAY
+    if (visibleElapsed < FADE_IN_DURATION) return visibleElapsed / FADE_IN_DURATION
+    return 1
+  }
 
   // Calculate effective elapsed time (excluding time spent paused)
   const elapsed = now - msg.timestamp - msg.pausedDuration

@@ -637,10 +637,12 @@ const mainPacketsReplayer = async (
       bot.game.gameMode = 'spectator'
       bot.emit('game')
     }
-    // Start in birds eye view mode for replays - emit event so overlay shows
-    // Start in birds eye view for MCPR replays
-    const { setCamera } = require('../interactiveControls')
-    setCamera({ mode: 'birdsEye' })
+    // Default to birds eye for MCPR replays, but don't override if the parent
+    // already set a different camera mode (e.g. freeRoam with position for moment highlights)
+    const { setCamera, getSpectatorCameraPosition } = require('../interactiveControls')
+    if (!getSpectatorCameraPosition()) {
+      setCamera({ mode: 'birdsEye' })
+    }
   }
 
   // Ensure the client is in PLAY state for packet processing
@@ -833,7 +835,9 @@ const mainPacketsReplayer = async (
         const packet = packetsWithTimestamp[i]
         playServerPacket(packet.name, packet.params)
       }
-      setSkipChatMessages(false)
+      // client.write defers event emission via setTimeout, so the skip flag
+      // must stay active until those deferred handlers have run
+      setTimeout(() => setSkipChatMessages(false), 0)
       customEvents.emit('seekComplete')
       log('Fast-forward complete')
 
@@ -845,9 +849,16 @@ const mainPacketsReplayer = async (
       totalPausedTime = 0
       packetsReplayState.progress.current = targetIndex
       packetsReplayState.currentTimeMs = targetMs
+      const wasPaused = !packetsReplayState.isPlaying
       packetsReplayState.isPlaying = true
       pausedAt = 0
       replayFinished = false
+
+      // Restore pause state after seek so J/L don't unpause
+      if (wasPaused) {
+        packetsReplayState.isPlaying = false
+        pausedAt = performance.now()
+      }
     }
 
     // If paused or finished, track pause time and keep loop running for restart/seek

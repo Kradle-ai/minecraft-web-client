@@ -30,7 +30,11 @@ let nextMessageId = 0
 let skipChatMessages = false
 
 export function setSkipChatMessages (skip: boolean) {
+  const wasSkipping = skipChatMessages
   skipChatMessages = skip
+  if (wasSkipping && !skip) {
+    sendChatToParent()
+  }
 }
 
 export const isSkippingMessages = () => skipChatMessages
@@ -60,13 +64,14 @@ function sendChatToParent () {
 
 export function sendMessageToParent (parts: any[], type: ChatMessageType) {
   if (!appQueryParams.kradleverse || window === window.parent) return
-  if (skipChatMessages) return
   const hash = `${type}|${getMessageHash(parts)}`
   if (seenMessageHashes.has(hash)) return
   seenMessageHashes.add(hash)
   nextMessageId++
   allChatMessages.push({ parts: sanitizeParts(parts), id: nextMessageId, type })
-  sendChatToParent()
+  if (!skipChatMessages) {
+    sendChatToParent()
+  }
 }
 
 // Synchronous clear function that can be called directly before fast-forwarding
@@ -145,10 +150,14 @@ export default () => {
         jsonMsg = jsonMsg['unsigned']
       }
       const parts = formatMessage(jsonMsg)
+      const type = classifyMessage(jsonMsg, parts)
+
+      // Always accumulate for parent (KradleVerse sidebar chat) even during fast-forward
+      if (type !== null) {
+        sendMessageToParent(parts, type)
+      }
 
       if (skipChatMessages) return
-
-      const type = classifyMessage(jsonMsg, parts)
 
       if (isChatCanvasEnabled() && type === 'chat') {
         addCanvasChatMessage(parts)
@@ -161,10 +170,6 @@ export default () => {
           // eslint-disable-next-line max-nested-callbacks
           setMessages(m => [...m])
         })
-
-        if (type !== null) {
-          sendMessageToParent(parts, type)
-        }
 
         // Show chat in 3D above player heads
         if (type === 'chat') {
