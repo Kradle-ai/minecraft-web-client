@@ -1,5 +1,37 @@
 /// <reference types="wicg-file-system-access" />
 
+declare module 'gif.js' {
+  interface GIFOptions {
+    workers?: number
+    quality?: number
+    width?: number | null
+    height?: number | null
+    workerScript?: string
+    repeat?: number
+    background?: string
+    transparent?: string | null
+    dither?: boolean | string
+    debug?: boolean
+    globalPalette?: boolean
+  }
+  interface FrameOptions {
+    delay?: number
+    copy?: boolean
+    transparent?: string | null
+  }
+  class GIF {
+    constructor (options?: GIFOptions)
+    running: boolean
+    addFrame (image: CanvasRenderingContext2D | ImageData | HTMLCanvasElement | HTMLImageElement, options?: FrameOptions): void
+    render (): void
+    abort (): void
+    on (event: 'finished', callback: (blob: Blob) => void): this
+    on (event: 'progress', callback: (progress: number) => void): this
+    on (event: 'start' | 'abort', callback: () => void): this
+  }
+  export default GIF
+}
+
 // todo make optional
 declare const bot: Omit<import('mineflayer').Bot, 'world' | '_client'> & {
   world: Omit<import('prismarine-world').world.WorldSync, 'getBlock'> & {
@@ -36,6 +68,7 @@ declare const customEvents: import('typed-emitter').default<{
   'kradle:setAgentSkins' (data: any): void // request from kradle to setAgentSkins
   'kradle:releasePointerLock' (data?: any): void // request from kradle to release pointer lock
   'kradle:takeScreenshot' (data?: any): void // request from kradle to capture a screenshot
+  'kradle:captureGif' (data?: any): void // request from kradle to capture an animated GIF (±1s around current time)
   'kradle:setCamera' (data: any): void // request from kradle to set camera mode and target
   'kradle:sendRecordingMessageList' (data?: any): void // request from kradle to set recording message list
   'kradle:togglePlayPause' (data?: any): void
