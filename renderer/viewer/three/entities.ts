@@ -1394,7 +1394,7 @@ export class Entities {
     const data = this.playerData.get(username)
     const now = Date.now()
     const paused = isGamePaused()
-    const chatLine = data && data.chatLine && (data.chatExpiry > now || paused) ? data.chatLine : null
+    const chatLine = data?.chatLine && (data.chatExpiry > now || paused) ? data.chatLine : null
     const health = data?.health ?? 20
     const { fontFamily } = this.entitiesOptions
 
