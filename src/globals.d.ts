@@ -20,14 +20,14 @@ declare module 'gif.js' {
     transparent?: string | null
   }
   class GIF {
-    constructor(options?: GIFOptions)
+    constructor (options?: GIFOptions)
     running: boolean
-    addFrame(image: CanvasRenderingContext2D | ImageData | HTMLCanvasElement | HTMLImageElement, options?: FrameOptions): void
-    render(): void
-    abort(): void
-    on(event: 'finished', callback: (blob: Blob) => void): this
-    on(event: 'progress', callback: (progress: number) => void): this
-    on(event: 'start' | 'abort', callback: () => void): this
+    addFrame (image: CanvasRenderingContext2D | ImageData | HTMLCanvasElement | HTMLImageElement, options?: FrameOptions): void
+    render (): void
+    abort (): void
+    on (event: 'finished', callback: (blob: Blob) => void): this
+    on (event: 'progress', callback: (progress: number) => void): this
+    on (event: 'start' | 'abort', callback: () => void): this
   }
   export default GIF
 }

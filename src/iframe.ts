@@ -1,5 +1,6 @@
 // Setup iframe comms with kradle frontend
 
+import GIF from 'gif.js'
 import { getThreeJsRendererMethods } from 'renderer/viewer/three/threeJsMethods'
 import { options } from './optionsStorage'
 import { musicSystem } from './sounds/musicSystem'
@@ -8,7 +9,6 @@ import { toggleMic, toggleCamera, toggleRecording } from './controls'
 import { audioTrackScheduler } from './sounds/audioTrackScheduler'
 import { appQueryParams } from './appParams'
 import { packetsReplayState } from './react/state/packetsReplayState'
-import GIF from 'gif.js'
 
 const DEBUG = false
 const log = (...args: any[]) => { if (DEBUG) log(...args) }
