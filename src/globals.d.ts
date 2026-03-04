@@ -38,6 +38,9 @@ declare const customEvents: import('typed-emitter').default<{
   'kradle:takeScreenshot' (data?: any): void // request from kradle to capture a screenshot
   'kradle:setCamera' (data: any): void // request from kradle to set camera mode and target
   'kradle:sendRecordingMessageList' (data?: any): void // request from kradle to set recording message list
+  'kradle:togglePlayPause' (data?: any): void
+  'kradle:pause' (data?: any): void
+  'kradle:play' (data?: any): void
   agentSkinsUpdated (): void // emitted when agent skins map is updated
   recordingUpdate (data: any): void // emitted when recording state changes
   recordingComplete (data: { blob: Blob; filename: string }): void // emitted when recording is complete
