@@ -77,6 +77,7 @@
     "filesize": "^10.0.12",
     "flying-squid": "npm:@zardoy/flying-squid@^0.0.51",
     "fs-extra": "^11.1.1",
+    "gif.js": "^0.2.0",
     "google-drive-browserfs": "github:zardoy/browserfs#google-drive",
     "jszip": "^3.10.1",
     "lodash-es": "^4.17.21",

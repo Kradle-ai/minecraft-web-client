@@ -8,6 +8,7 @@ import { toggleMic, toggleCamera, toggleRecording } from './controls'
 import { audioTrackScheduler } from './sounds/audioTrackScheduler'
 import { appQueryParams } from './appParams'
 import { packetsReplayState } from './react/state/packetsReplayState'
+import GIF from 'gif.js'
 
 const DEBUG = false
 const log = (...args: any[]) => { if (DEBUG) log(...args) }
@@ -71,6 +72,20 @@ type IFrameSendablePayload =
   }
   | {
     source: 'minecraft-web-client';
+    action: 'gifData';
+    gifDataUrl: string; // Base64 data URL string (GIF)
+    position?: { x: number; y: number; z: number };
+    direction?: { yaw: number; pitch: number };
+  }
+  | {
+    source: 'minecraft-web-client';
+    action: 'gifProgress';
+    phase: 'seeking' | 'capturing' | 'encoding' | 'done' | 'error';
+    progress?: number; // 0-100 for encoding phase
+    message?: string;
+  }
+  | {
+    source: 'minecraft-web-client';
     action: 'recordingData';
     blob: Blob; // Video recording blob (WebM)
     filename: string; // Suggested filename
@@ -86,7 +101,7 @@ type IFrameSendablePayload =
     feature: 'recording' | 'camera' | 'voice';
   }
 
-type ReceivableActions = 'command' | 'reconnect' | 'setAgentSkins' | 'releasePointerLock' | 'takeScreenshot' | 'setCamera' | 'sendRecordingMessageList' | 'togglePlayPause' | 'pause' | 'play'
+type ReceivableActions = 'command' | 'reconnect' | 'setAgentSkins' | 'releasePointerLock' | 'takeScreenshot' | 'captureGif' | 'setCamera' | 'sendRecordingMessageList' | 'togglePlayPause' | 'pause' | 'play'
 
 let playerPaused = false
 
@@ -518,6 +533,132 @@ export function setupIframeComms () {
     } catch (error) {
       console.error('[iframe-rpc] Failed to capture screenshot:', error)
     }
+  })
+
+  // Handle animated GIF capture request from parent app
+  // Captures ±1 second around the current replay time at 10fps
+  let gifCaptureInProgress = false
+  customEvents.on('kradle:captureGif', () => {
+    if (gifCaptureInProgress) {
+      console.warn('[gif-capture] GIF capture already in progress')
+      return
+    }
+    gifCaptureInProgress = true
+
+    const gameCanvas = document.getElementById('viewer-canvas') as HTMLCanvasElement
+    if (!gameCanvas) {
+      console.warn('[gif-capture] viewer-canvas not found')
+      gifCaptureInProgress = false
+      return
+    }
+
+    const cam = getCurrentCameraPositionAndDirection()
+    const captureTimeMs = packetsReplayState.currentTimeMs
+    const startCaptureMs = Math.max(0, captureTimeMs - 1000)
+    const endCaptureMs = Math.min(packetsReplayState.totalDurationMs, captureTimeMs + 1000)
+    const GIF_FPS = 10
+    const FRAME_INTERVAL_MS = 1000 / GIF_FPS
+    const GIF_WIDTH = 960
+    const GIF_HEIGHT = Math.round(GIF_WIDTH * (gameCanvas.height / gameCanvas.width))
+
+    console.log(`[gif-capture] Starting: ${startCaptureMs}ms -> ${endCaptureMs}ms (center: ${captureTimeMs}ms)`)
+
+    sendMessageToKradle({ action: 'gifProgress', phase: 'seeking' })
+
+    // Ensure we're paused, then seek to the start position
+    if (!playerPaused) pausePlayback()
+
+    packetsReplayState.seekTargetMs = startCaptureMs
+
+    // Wait for seek to complete, then start capturing frames
+    const onSeekComplete = () => {
+      customEvents.removeListener('seekComplete', onSeekComplete)
+      console.log(`[gif-capture] Seek complete, starting frame capture`)
+      sendMessageToKradle({ action: 'gifProgress', phase: 'capturing' })
+
+      // Scaling canvas for smaller GIF output
+      const scalingCanvas = document.createElement('canvas')
+      scalingCanvas.width = GIF_WIDTH
+      scalingCanvas.height = GIF_HEIGHT
+      const scalingCtx = scalingCanvas.getContext('2d')!
+
+      const frames: ImageData[] = []
+      let lastFrameMs = 0
+
+      // Start playback
+      unpausePlayback()
+
+      const captureFrame = () => {
+        if (packetsReplayState.currentTimeMs >= endCaptureMs) {
+          // Done capturing - pause and encode
+          pausePlayback()
+          console.log(`[gif-capture] Captured ${frames.length} frames, encoding GIF...`)
+
+          // Seek back to the original moment time
+          packetsReplayState.seekTargetMs = captureTimeMs
+
+          sendMessageToKradle({ action: 'gifProgress', phase: 'encoding' })
+
+          const gif = new GIF({
+            workers: 2,
+            quality: 10,
+            width: GIF_WIDTH,
+            height: GIF_HEIGHT,
+            workerScript: 'gif.worker.js',
+          })
+
+          for (const frame of frames) {
+            gif.addFrame(frame, { delay: FRAME_INTERVAL_MS, copy: false })
+          }
+
+          gif.on('progress', (p: number) => {
+            sendMessageToKradle({ action: 'gifProgress', phase: 'encoding', progress: Math.round(p * 100) })
+          })
+
+          gif.on('finished', (blob: Blob) => {
+            console.log(`[gif-capture] GIF encoded, size: ${(blob.size / 1024).toFixed(1)}KB`)
+            const reader = new FileReader()
+            reader.onload = () => {
+              sendMessageToKradle({
+                action: 'gifData',
+                gifDataUrl: reader.result as string,
+                ...(cam && { position: cam.position, direction: cam.direction }),
+              })
+              sendMessageToKradle({ action: 'gifProgress', phase: 'done' })
+              gifCaptureInProgress = false
+            }
+            reader.readAsDataURL(blob)
+          })
+
+          gif.render()
+          return
+        }
+
+        // Capture frame at interval
+        const elapsed = packetsReplayState.currentTimeMs - startCaptureMs
+        if (elapsed - lastFrameMs >= FRAME_INTERVAL_MS || frames.length === 0) {
+          scalingCtx.drawImage(gameCanvas, 0, 0, GIF_WIDTH, GIF_HEIGHT)
+          frames.push(scalingCtx.getImageData(0, 0, GIF_WIDTH, GIF_HEIGHT))
+          lastFrameMs = elapsed
+        }
+
+        requestAnimationFrame(captureFrame)
+      }
+
+      requestAnimationFrame(captureFrame)
+    }
+
+    customEvents.on('seekComplete', onSeekComplete)
+
+    // Safety timeout if seek doesn't complete within 10s
+    setTimeout(() => {
+      if (gifCaptureInProgress) {
+        customEvents.removeListener('seekComplete', onSeekComplete)
+        console.error('[gif-capture] Seek timed out')
+        sendMessageToKradle({ action: 'gifProgress', phase: 'error', message: 'Seek timed out' })
+        gifCaptureInProgress = false
+      }
+    }, 10_000)
   })
 
   customEvents.on('kradle:togglePlayPause', () => {

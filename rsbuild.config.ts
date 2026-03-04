@@ -171,6 +171,7 @@ const appConfig = defineConfig({
                     genLargeDataAliases(SINGLE_FILE_BUILD)
                     fsExtra.copySync('./node_modules/mc-assets/dist/other-textures/latest/entity', './dist/textures/entity')
                     fsExtra.copySync('./assets/background', './dist/background')
+                    fs.copyFileSync('./node_modules/gif.js/dist/gif.worker.js', './dist/gif.worker.js')
                     fs.copyFileSync('./assets/favicon.png', './dist/favicon.png')
                     fs.copyFileSync('./assets/playground.html', './dist/playground.html')
                     fs.copyFileSync('./assets/manifest.json', './dist/manifest.json')
